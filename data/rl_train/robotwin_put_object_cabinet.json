@@ -1,0 +1,52 @@
+[
+    {
+        "prompt": "The whole scene is in a realistic, industrial art style with three views: a fixed rear camera, a movable left arm camera, and a movable right arm camera. The aloha robot is currently performing the following task: using left arm, pull the rectangular cabinet's drawer open and transfer the soap with tan specks into it.",
+        "filename_stem": "robotwin_put_object_cabinet_123500051",
+        "media_path": "/home/omz1504/code/vidar/data/test/put_object_cabinet/robotwin_put_object_cabinet_123500051.png"
+    },
+    {
+        "prompt": "The whole scene is in a realistic, industrial art style with three views: a fixed rear camera, a movable left arm camera, and a movable right arm camera. The aloha robot is currently performing the following task: using left arm, slide open the smooth-surface cabinet's drawer and set the bread with golden crust inside.",
+        "filename_stem": "robotwin_put_object_cabinet_123500058",
+        "media_path": "/home/omz1504/code/vidar/data/test/put_object_cabinet/robotwin_put_object_cabinet_123500058.png"
+    },
+    {
+        "prompt": "The whole scene is in a realistic, industrial art style with three views: a fixed rear camera, a movable left arm camera, and a movable right arm camera. The aloha robot is currently performing the following task: using left arm, slide open the cabinet with angled sides's drawer and drop the mouse with two buttons and a scroll wheel inside.",
+        "filename_stem": "robotwin_put_object_cabinet_123500080",
+        "media_path": "/home/omz1504/code/vidar/data/test/put_object_cabinet/robotwin_put_object_cabinet_123500080.png"
+    },
+    {
+        "prompt": "The whole scene is in a realistic, industrial art style with three views: a fixed rear camera, a movable left arm camera, and a movable right arm camera. The aloha robot is currently performing the following task: using left arm, put the hand-sized soap into the medium-sized cabinet's drawer once it is opened.",
+        "filename_stem": "robotwin_put_object_cabinet_123500091",
+        "media_path": "/home/omz1504/code/vidar/data/test/put_object_cabinet/robotwin_put_object_cabinet_123500091.png"
+    },
+    {
+        "prompt": "The whole scene is in a realistic, industrial art style with three views: a fixed rear camera, a movable left arm camera, and a movable right arm camera. The aloha robot is currently performing the following task: using left arm, open the drawer of the light wood cabinet and place the phone with black touchscreen into it.",
+        "filename_stem": "robotwin_put_object_cabinet_123500110",
+        "media_path": "/home/omz1504/code/vidar/data/test/put_object_cabinet/robotwin_put_object_cabinet_123500110.png"
+    },
+    {
+        "prompt": "The whole scene is in a realistic, industrial art style with three views: a fixed rear camera, a movable left arm camera, and a movable right arm camera. The aloha robot is currently performing the following task: using left arm, pull open the drawer of the wooden cabinet and place the medium-sized rectangular bread inside.",
+        "filename_stem": "robotwin_put_object_cabinet_123500122",
+        "media_path": "/home/omz1504/code/vidar/data/test/put_object_cabinet/robotwin_put_object_cabinet_123500122.png"
+    },
+    {
+        "prompt": "The whole scene is in a realistic, industrial art style with three views: a fixed rear camera, a movable left arm camera, and a movable right arm camera. The aloha robot is currently performing the following task: using left arm, open the storage cabinet's drawer and carefully drop the golden bread into it.",
+        "filename_stem": "robotwin_put_object_cabinet_123500126",
+        "media_path": "/home/omz1504/code/vidar/data/test/put_object_cabinet/robotwin_put_object_cabinet_123500126.png"
+    },
+    {
+        "prompt": "The whole scene is in a realistic, industrial art style with three views: a fixed rear camera, a movable left arm camera, and a movable right arm camera. The aloha robot is currently performing the following task: using left arm, open the light wood cabinet's drawer and carefully drop the red box for coffee sachets into it.",
+        "filename_stem": "robotwin_put_object_cabinet_123500139",
+        "media_path": "/home/omz1504/code/vidar/data/test/put_object_cabinet/robotwin_put_object_cabinet_123500139.png"
+    },
+    {
+        "prompt": "The whole scene is in a realistic, industrial art style with three views: a fixed rear camera, a movable left arm camera, and a movable right arm camera. The aloha robot is currently performing the following task: using left arm, set the cleaning soap with spotted texture into the light wood cabinet's drawer after opening it.",
+        "filename_stem": "robotwin_put_object_cabinet_123500141",
+        "media_path": "/home/omz1504/code/vidar/data/test/put_object_cabinet/robotwin_put_object_cabinet_123500141.png"
+    },
+    {
+        "prompt": "The whole scene is in a realistic, industrial art style with three views: a fixed rear camera, a movable left arm camera, and a movable right arm camera. The aloha robot is currently performing the following task: using left arm, put the glossy bright tea-box into the storage cabinet's drawer once it is opened.",
+        "filename_stem": "robotwin_put_object_cabinet_123500176",
+        "media_path": "/home/omz1504/code/vidar/data/test/put_object_cabinet/robotwin_put_object_cabinet_123500176.png"
+    }
+]

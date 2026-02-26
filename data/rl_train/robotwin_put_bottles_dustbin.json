@@ -1,0 +1,52 @@
+[
+    {
+        "prompt": "The whole scene is in a realistic, industrial art style with three views: a fixed rear camera, a movable left arm camera, and a movable right arm camera. The aloha robot is currently performing the following task: use arms to grab the bottles and put them into the dustbin to the left of the table.",
+        "filename_stem": "robotwin_put_bottles_dustbin_123500002",
+        "media_path": "/home/omz1504/code/vidar/data/test/put_bottles_dustbin/robotwin_put_bottles_dustbin_123500002.png"
+    },
+    {
+        "prompt": "The whole scene is in a realistic, industrial art style with three views: a fixed rear camera, a movable left arm camera, and a movable right arm camera. The aloha robot is currently performing the following task: use arms to grab the bottles and put them into the dustbin to the left of the table.",
+        "filename_stem": "robotwin_put_bottles_dustbin_123500003",
+        "media_path": "/home/omz1504/code/vidar/data/test/put_bottles_dustbin/robotwin_put_bottles_dustbin_123500003.png"
+    },
+    {
+        "prompt": "The whole scene is in a realistic, industrial art style with three views: a fixed rear camera, a movable left arm camera, and a movable right arm camera. The aloha robot is currently performing the following task: use arms to grab the bottles and put them into the dustbin to the left of the table.",
+        "filename_stem": "robotwin_put_bottles_dustbin_123500004",
+        "media_path": "/home/omz1504/code/vidar/data/test/put_bottles_dustbin/robotwin_put_bottles_dustbin_123500004.png"
+    },
+    {
+        "prompt": "The whole scene is in a realistic, industrial art style with three views: a fixed rear camera, a movable left arm camera, and a movable right arm camera. The aloha robot is currently performing the following task: use arms to grab the bottles and put them into the dustbin to the left of the table.",
+        "filename_stem": "robotwin_put_bottles_dustbin_123500007",
+        "media_path": "/home/omz1504/code/vidar/data/test/put_bottles_dustbin/robotwin_put_bottles_dustbin_123500007.png"
+    },
+    {
+        "prompt": "The whole scene is in a realistic, industrial art style with three views: a fixed rear camera, a movable left arm camera, and a movable right arm camera. The aloha robot is currently performing the following task: use arms to grab the bottles and put them into the dustbin to the left of the table.",
+        "filename_stem": "robotwin_put_bottles_dustbin_123500008",
+        "media_path": "/home/omz1504/code/vidar/data/test/put_bottles_dustbin/robotwin_put_bottles_dustbin_123500008.png"
+    },
+    {
+        "prompt": "The whole scene is in a realistic, industrial art style with three views: a fixed rear camera, a movable left arm camera, and a movable right arm camera. The aloha robot is currently performing the following task: use arms to grab the bottles and put them into the dustbin to the left of the table.",
+        "filename_stem": "robotwin_put_bottles_dustbin_123500011",
+        "media_path": "/home/omz1504/code/vidar/data/test/put_bottles_dustbin/robotwin_put_bottles_dustbin_123500011.png"
+    },
+    {
+        "prompt": "The whole scene is in a realistic, industrial art style with three views: a fixed rear camera, a movable left arm camera, and a movable right arm camera. The aloha robot is currently performing the following task: use arms to grab the bottles and put them into the dustbin to the left of the table.",
+        "filename_stem": "robotwin_put_bottles_dustbin_123500012",
+        "media_path": "/home/omz1504/code/vidar/data/test/put_bottles_dustbin/robotwin_put_bottles_dustbin_123500012.png"
+    },
+    {
+        "prompt": "The whole scene is in a realistic, industrial art style with three views: a fixed rear camera, a movable left arm camera, and a movable right arm camera. The aloha robot is currently performing the following task: use arms to grab the bottles and put them into the dustbin to the left of the table.",
+        "filename_stem": "robotwin_put_bottles_dustbin_123500013",
+        "media_path": "/home/omz1504/code/vidar/data/test/put_bottles_dustbin/robotwin_put_bottles_dustbin_123500013.png"
+    },
+    {
+        "prompt": "The whole scene is in a realistic, industrial art style with three views: a fixed rear camera, a movable left arm camera, and a movable right arm camera. The aloha robot is currently performing the following task: use arms to grab the bottles and put them into the dustbin to the left of the table.",
+        "filename_stem": "robotwin_put_bottles_dustbin_123500015",
+        "media_path": "/home/omz1504/code/vidar/data/test/put_bottles_dustbin/robotwin_put_bottles_dustbin_123500015.png"
+    },
+    {
+        "prompt": "The whole scene is in a realistic, industrial art style with three views: a fixed rear camera, a movable left arm camera, and a movable right arm camera. The aloha robot is currently performing the following task: use arms to grab the bottles and put them into the dustbin to the left of the table.",
+        "filename_stem": "robotwin_put_bottles_dustbin_123500016",
+        "media_path": "/home/omz1504/code/vidar/data/test/put_bottles_dustbin/robotwin_put_bottles_dustbin_123500016.png"
+    }
+]

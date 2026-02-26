@@ -1,0 +1,52 @@
+[
+    {
+        "prompt": "The whole scene is in a realistic, industrial art style with three views: a fixed rear camera, a movable left arm camera, and a movable right arm camera. The aloha robot is currently performing the following task: place the red block, green block, and blue block in the order of red, green, and blue from left to right, placing in a row.",
+        "filename_stem": "robotwin_blocks_ranking_rgb_123500000",
+        "media_path": "/home/omz1504/code/vidar/data/test/blocks_ranking_rgb/robotwin_blocks_ranking_rgb_123500000.png"
+    },
+    {
+        "prompt": "The whole scene is in a realistic, industrial art style with three views: a fixed rear camera, a movable left arm camera, and a movable right arm camera. The aloha robot is currently performing the following task: place the red block, green block, and blue block in the order of red, green, and blue from left to right, placing in a row.",
+        "filename_stem": "robotwin_blocks_ranking_rgb_123500001",
+        "media_path": "/home/omz1504/code/vidar/data/test/blocks_ranking_rgb/robotwin_blocks_ranking_rgb_123500001.png"
+    },
+    {
+        "prompt": "The whole scene is in a realistic, industrial art style with three views: a fixed rear camera, a movable left arm camera, and a movable right arm camera. The aloha robot is currently performing the following task: place the red block, green block, and blue block in the order of red, green, and blue from left to right, placing in a row.",
+        "filename_stem": "robotwin_blocks_ranking_rgb_123500002",
+        "media_path": "/home/omz1504/code/vidar/data/test/blocks_ranking_rgb/robotwin_blocks_ranking_rgb_123500002.png"
+    },
+    {
+        "prompt": "The whole scene is in a realistic, industrial art style with three views: a fixed rear camera, a movable left arm camera, and a movable right arm camera. The aloha robot is currently performing the following task: place the red block, green block, and blue block in the order of red, green, and blue from left to right, placing in a row.",
+        "filename_stem": "robotwin_blocks_ranking_rgb_123500003",
+        "media_path": "/home/omz1504/code/vidar/data/test/blocks_ranking_rgb/robotwin_blocks_ranking_rgb_123500003.png"
+    },
+    {
+        "prompt": "The whole scene is in a realistic, industrial art style with three views: a fixed rear camera, a movable left arm camera, and a movable right arm camera. The aloha robot is currently performing the following task: place the red block, green block, and blue block in the order of red, green, and blue from left to right, placing in a row.",
+        "filename_stem": "robotwin_blocks_ranking_rgb_123500004",
+        "media_path": "/home/omz1504/code/vidar/data/test/blocks_ranking_rgb/robotwin_blocks_ranking_rgb_123500004.png"
+    },
+    {
+        "prompt": "The whole scene is in a realistic, industrial art style with three views: a fixed rear camera, a movable left arm camera, and a movable right arm camera. The aloha robot is currently performing the following task: place the red block, green block, and blue block in the order of red, green, and blue from left to right, placing in a row.",
+        "filename_stem": "robotwin_blocks_ranking_rgb_123500005",
+        "media_path": "/home/omz1504/code/vidar/data/test/blocks_ranking_rgb/robotwin_blocks_ranking_rgb_123500005.png"
+    },
+    {
+        "prompt": "The whole scene is in a realistic, industrial art style with three views: a fixed rear camera, a movable left arm camera, and a movable right arm camera. The aloha robot is currently performing the following task: place the red block, green block, and blue block in the order of red, green, and blue from left to right, placing in a row.",
+        "filename_stem": "robotwin_blocks_ranking_rgb_123500006",
+        "media_path": "/home/omz1504/code/vidar/data/test/blocks_ranking_rgb/robotwin_blocks_ranking_rgb_123500006.png"
+    },
+    {
+        "prompt": "The whole scene is in a realistic, industrial art style with three views: a fixed rear camera, a movable left arm camera, and a movable right arm camera. The aloha robot is currently performing the following task: place the red block, green block, and blue block in the order of red, green, and blue from left to right, placing in a row.",
+        "filename_stem": "robotwin_blocks_ranking_rgb_123500007",
+        "media_path": "/home/omz1504/code/vidar/data/test/blocks_ranking_rgb/robotwin_blocks_ranking_rgb_123500007.png"
+    },
+    {
+        "prompt": "The whole scene is in a realistic, industrial art style with three views: a fixed rear camera, a movable left arm camera, and a movable right arm camera. The aloha robot is currently performing the following task: place the red block, green block, and blue block in the order of red, green, and blue from left to right, placing in a row.",
+        "filename_stem": "robotwin_blocks_ranking_rgb_123500008",
+        "media_path": "/home/omz1504/code/vidar/data/test/blocks_ranking_rgb/robotwin_blocks_ranking_rgb_123500008.png"
+    },
+    {
+        "prompt": "The whole scene is in a realistic, industrial art style with three views: a fixed rear camera, a movable left arm camera, and a movable right arm camera. The aloha robot is currently performing the following task: place the red block, green block, and blue block in the order of red, green, and blue from left to right, placing in a row.",
+        "filename_stem": "robotwin_blocks_ranking_rgb_123500009",
+        "media_path": "/home/omz1504/code/vidar/data/test/blocks_ranking_rgb/robotwin_blocks_ranking_rgb_123500009.png"
+    }
+]

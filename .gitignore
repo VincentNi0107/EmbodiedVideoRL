@@ -1,0 +1,41 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+*.egg
+dist/
+build/
+*.so
+
+# Model checkpoints (large, download separately)
+ckpts/
+hps_ckpt/
+videoalign_ckpt/
+
+# External dependencies (clone separately)
+sam3/
+
+# Training outputs (generated videos, logs, debug artifacts)
+data/outputs/
+
+# IDE / editor
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Claude Code
+.claude/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Jupyter
+.ipynb_checkpoints/
+
+# Environment
+.env
+*.log

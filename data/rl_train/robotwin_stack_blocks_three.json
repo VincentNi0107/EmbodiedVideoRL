@@ -1,0 +1,57 @@
+[
+    {
+        "prompt": "The whole scene is in a realistic, industrial art style with three views: a fixed rear camera, a movable left arm camera, and a movable right arm camera. The aloha robot is currently performing the following task: there are three blocks on the table, the color of the blocks is red, green and blue, move the blocks to the center of the table, and stack the blue block on the green block, and the green block on the red block.",
+        "filename_stem": "robotwin_stack_blocks_three_123500000",
+        "media_path": "/home/omz1504/code/vidar/data/test/stack_blocks_three/robotwin_stack_blocks_three_123500000.png"
+    },
+    {
+        "prompt": "The whole scene is in a realistic, industrial art style with three views: a fixed rear camera, a movable left arm camera, and a movable right arm camera. The aloha robot is currently performing the following task: there are three blocks on the table, the color of the blocks is red, green and blue, move the blocks to the center of the table, and stack the blue block on the green block, and the green block on the red block.",
+        "filename_stem": "robotwin_stack_blocks_three_123500001",
+        "media_path": "/home/omz1504/code/vidar/data/test/stack_blocks_three/robotwin_stack_blocks_three_123500001.png"
+    },
+    {
+        "prompt": "The whole scene is in a realistic, industrial art style with three views: a fixed rear camera, a movable left arm camera, and a movable right arm camera. The aloha robot is currently performing the following task: there are three blocks on the table, the color of the blocks is red, green and blue, move the blocks to the center of the table, and stack the blue block on the green block, and the green block on the red block.",
+        "filename_stem": "robotwin_stack_blocks_three_123500002",
+        "media_path": "/home/omz1504/code/vidar/data/test/stack_blocks_three/robotwin_stack_blocks_three_123500002.png"
+    },
+    {
+        "prompt": "The whole scene is in a realistic, industrial art style with three views: a fixed rear camera, a movable left arm camera, and a movable right arm camera. The aloha robot is currently performing the following task: there are three blocks on the table, the color of the blocks is red, green and blue, move the blocks to the center of the table, and stack the blue block on the green block, and the green block on the red block.",
+        "filename_stem": "robotwin_stack_blocks_three_123500003",
+        "media_path": "/home/omz1504/code/vidar/data/test/stack_blocks_three/robotwin_stack_blocks_three_123500003.png"
+    },
+    {
+        "prompt": "The whole scene is in a realistic, industrial art style with three views: a fixed rear camera, a movable left arm camera, and a movable right arm camera. The aloha robot is currently performing the following task: there are three blocks on the table, the color of the blocks is red, green and blue, move the blocks to the center of the table, and stack the blue block on the green block, and the green block on the red block.",
+        "filename_stem": "robotwin_stack_blocks_three_123500004",
+        "media_path": "/home/omz1504/code/vidar/data/test/stack_blocks_three/robotwin_stack_blocks_three_123500004.png"
+    },
+    {
+        "prompt": "The whole scene is in a realistic, industrial art style with three views: a fixed rear camera, a movable left arm camera, and a movable right arm camera. The aloha robot is currently performing the following task: there are three blocks on the table, the color of the blocks is red, green and blue, move the blocks to the center of the table, and stack the blue block on the green block, and the green block on the red block.",
+        "filename_stem": "robotwin_stack_blocks_three_123500005",
+        "media_path": "/home/omz1504/code/vidar/data/test/stack_blocks_three/robotwin_stack_blocks_three_123500005.png"
+    },
+    {
+        "prompt": "The whole scene is in a realistic, industrial art style with three views: a fixed rear camera, a movable left arm camera, and a movable right arm camera. The aloha robot is currently performing the following task: there are three blocks on the table, the color of the blocks is red, green and blue, move the blocks to the center of the table, and stack the blue block on the green block, and the green block on the red block.",
+        "filename_stem": "robotwin_stack_blocks_three_123500006",
+        "media_path": "/home/omz1504/code/vidar/data/test/stack_blocks_three/robotwin_stack_blocks_three_123500006.png"
+    },
+    {
+        "prompt": "The whole scene is in a realistic, industrial art style with three views: a fixed rear camera, a movable left arm camera, and a movable right arm camera. The aloha robot is currently performing the following task: there are three blocks on the table, the color of the blocks is red, green and blue, move the blocks to the center of the table, and stack the blue block on the green block, and the green block on the red block.",
+        "filename_stem": "robotwin_stack_blocks_three_123500007",
+        "media_path": "/home/omz1504/code/vidar/data/test/stack_blocks_three/robotwin_stack_blocks_three_123500007.png"
+    },
+    {
+        "prompt": "The whole scene is in a realistic, industrial art style with three views: a fixed rear camera, a movable left arm camera, and a movable right arm camera. The aloha robot is currently performing the following task: there are three blocks on the table, the color of the blocks is red, green and blue, move the blocks to the center of the table, and stack the blue block on the green block, and the green block on the red block.",
+        "filename_stem": "robotwin_stack_blocks_three_123500008",
+        "media_path": "/home/omz1504/code/vidar/data/test/stack_blocks_three/robotwin_stack_blocks_three_123500008.png"
+    },
+    {
+        "prompt": "The whole scene is in a realistic, industrial art style with three views: a fixed rear camera, a movable left arm camera, and a movable right arm camera. The aloha robot is currently performing the following task: there are three blocks on the table, the color of the blocks is red, green and blue, move the blocks to the center of the table, and stack the blue block on the green block, and the green block on the red block.",
+        "filename_stem": "robotwin_stack_blocks_three_123500009",
+        "media_path": "/home/omz1504/code/vidar/data/test/stack_blocks_three/robotwin_stack_blocks_three_123500009.png"
+    },
+    {
+        "prompt": "The whole scene is in a realistic, industrial art style with three views: a fixed rear camera, a movable left arm camera, and a movable right arm camera. The aloha robot is currently performing the following task: stack the three bowls on top of each other.",
+        "filename_stem": "robotwin_stack_bowls_three_123500000",
+        "media_path": "/home/omz1504/code/vidar/data/test/stack_bowls_three/robotwin_stack_bowls_three_123500000.png"
+    }
+]
