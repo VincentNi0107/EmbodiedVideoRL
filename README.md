@@ -92,6 +92,35 @@ cp .env.example .env
 source .env
 ```
 
+### Docker (optional)
+
+Build the image:
+```bash
+docker build -t embodied-video-rl .
+```
+
+Run training (mount checkpoints and output directory):
+```bash
+docker run --gpus all --ipc=host --shm-size=64g \
+    -v /path/to/ckpts:/app/ckpts \
+    -v /path/to/outputs:/app/data/outputs \
+    --env-file .env \
+    embodied-video-rl \
+    bash scripts/finetune/finetune_wan_2_2_ti2v_nft_blocks_ranking_rgb.sh
+```
+
+Run inference:
+```bash
+docker run --gpus all \
+    -v /path/to/ckpts:/app/ckpts \
+    -v /path/to/outputs:/app/data/outputs \
+    --env-file .env \
+    embodied-video-rl \
+    bash scripts/inference/infer_nft.sh
+```
+
+Checkpoints (`ckpts/`) and training outputs (`data/outputs/`) are mounted from the host — not baked into the image.
+
 ## Training
 
 ### DiffusionNFT + Gemini reward (put_object_cabinet)
