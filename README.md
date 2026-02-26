@@ -40,24 +40,47 @@ Six manipulation tasks from the [RoboTwin](https://robotwin-benchmark.github.io/
 
 ### Prerequisites
 
-- Python 3.10, PyTorch 2.6+, CUDA
+- Python 3.10, PyTorch 2.5+, CUDA 12.1+
 - Conda environment setup:
 ```bash
 conda create -n wanx python=3.10
 conda activate wanx
-pip install -r requirements.txt  # or ./env_setup.sh fastvideo
+bash env_setup.sh
 ```
 
 ### Model Checkpoints
 
-Download and place under `ckpts/`:
+```bash
+mkdir -p ckpts/vidar_ckpts
+```
 
-| Checkpoint | Path | Source |
-|-----------|------|--------|
-| Wan2.2-TI2V-5B (base model) | `ckpts/Wan2.2-TI2V-5B/` | [Wan-AI](https://huggingface.co/Wan-AI) |
-| Vidar merged LoRA | `ckpts/vidar_ckpts/merged_vidar_lora.pt` | [HuggingFace](https://huggingface.co/VincentNi/EmbodiedVideoRL) |
-| IDM weights (optional, for server) | `ckpts/vidar_ckpts/idm.pt` | [HuggingFace](https://huggingface.co/VincentNi/EmbodiedVideoRL) |
-| SAM3 | `sam3/` | [SAM3 repo](https://github.com/anthropics/segment-anything-3) |
+**Base model (Wan2.2-TI2V-5B):**
+```bash
+# Download from Wan-AI (requires huggingface-cli login)
+huggingface-cli download Wan-AI/Wan2.2-TI2V-5B --local-dir ckpts/Wan2.2-TI2V-5B
+```
+
+**SFT model + IDM weights:**
+```bash
+huggingface-cli download VincentNi/EmbodiedVideoRL --local-dir ckpts/vidar_ckpts
+```
+This downloads:
+- `merged_vidar_lora.pt` (~9.4GB) — SFT fine-tuned LoRA weights (merged with base), used as `--pt_dir` for training and inference
+- `idm.pt` (~1.1GB) — Inverse Dynamics Model, optional, only needed for the API server
+
+### SAM3 Setup
+
+SAM3 is required for the hallucination-based reward backends (`hallucination`, `hallucination_bottles`). Not needed if you only use the Gemini API reward.
+
+```bash
+# Clone SAM3 into the project root
+git clone https://github.com/facebookresearch/sam3.git
+
+# Install SAM3 as a package
+cd sam3 && pip install -e . && cd ..
+```
+
+The SAM3 model checkpoint (`sam3.pt`) is automatically downloaded from [facebook/sam3](https://huggingface.co/facebook/sam3) on HuggingFace the first time you run a hallucination reward scorer. No manual download needed.
 
 ### API Keys
 
