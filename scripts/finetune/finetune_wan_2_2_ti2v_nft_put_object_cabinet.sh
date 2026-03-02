@@ -2,11 +2,11 @@ export WANDB_DISABLED=true
 export WANDB_BASE_URL="https://api.wandb.ai"
 export WANDB_MODE=online
 
-GPU_NUM=${GPU_NUM:-4}
+GPU_NUM=${GPU_NUM:-8}
 MASTER_PORT=${MASTER_PORT:-19013}
 
 CKPT_DIR="ckpts/Wan2.2-TI2V-5B"
-PT_DIR="ckpts/vidar_ckpts/merged_vidar_lora"
+PT_DIR="ckpts/vidar_ckpts/merged_vidar_lora.pt"
 
 # Full dataset: put_object_cabinet (10 scenes)
 DATASET_JSON="data/rl_train/robotwin_put_object_cabinet.json"
@@ -15,6 +15,8 @@ OUTPUT_DIR="data/outputs/nft_put_object_cabinet"
 # LoRA config
 LORA_RANK=64
 LORA_ALPHA=64
+
+source .env
 
 torchrun --nproc_per_node=${GPU_NUM} --master_port ${MASTER_PORT} \
     fastvideo/train_nft_wan_2_2_ti2v.py \
@@ -33,6 +35,8 @@ torchrun --nproc_per_node=${GPU_NUM} --master_port ${MASTER_PORT} \
     --max_samples -1 \
     --reward_backend gpt \
     --gpt_model gemini-3-flash-preview \
+    --gpt_api_base ${GPT_API_BASE} \
+    --gpt_api_key ${GPT_API_KEY} \
     --gpt_temperature 0.0 \
     --convert_model_dtype \
     --offload_model false \
@@ -46,7 +50,7 @@ torchrun --nproc_per_node=${GPU_NUM} --master_port ${MASTER_PORT} \
     --timestep_fraction 0.5 \
     --decay_type 1 \
     --temporal_lambda 0.1 \
-    --gradient_accumulation_steps 4 \
+    --gradient_accumulation_steps 2 \
     --checkpointing_steps 10 \
     --lora_rank ${LORA_RANK} \
     --lora_alpha ${LORA_ALPHA}

@@ -115,6 +115,8 @@ def _enable_gradient_checkpointing(dit):
     main_print(f"  Gradient checkpointing enabled on {len(blocks)} DiT blocks")
 
 
+
+
 def _offload_vae_t5(model, to_cpu=True):
     """Move VAE and T5 to CPU to free GPU VRAM during training phase."""
     if to_cpu:

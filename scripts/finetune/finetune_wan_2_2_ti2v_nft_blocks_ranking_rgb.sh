@@ -2,7 +2,7 @@ export WANDB_DISABLED=true
 export WANDB_BASE_URL="https://api.wandb.ai"
 export WANDB_MODE=online
 
-GPU_NUM=${GPU_NUM:-1}
+GPU_NUM=${GPU_NUM:-4}
 MASTER_PORT=${MASTER_PORT:-19014}
 
 CKPT_DIR="ckpts/Wan2.2-TI2V-5B"
@@ -48,8 +48,8 @@ torchrun --nproc_per_node=${GPU_NUM} --master_port ${MASTER_PORT} \
     --timestep_fraction 0.5 \
     --decay_type 1 \
     --temporal_lambda 0.0 \
-    --gradient_accumulation_steps 4 \
+    --gradient_accumulation_steps 1 \
     --checkpointing_steps 10 \
     --lora_rank ${LORA_RANK} \
-    --lora_alpha ${LORA_ALPHA} \
-    --resume_from_lora_checkpoint data/outputs/nft_blocks_ranking_rgb/checkpoints/lora_step000200.pt
+    --lora_alpha ${LORA_ALPHA}
+    # --resume_from_lora_checkpoint data/outputs/nft_blocks_ranking_rgb/checkpoints/lora_step000200.pt
