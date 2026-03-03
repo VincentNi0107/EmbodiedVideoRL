@@ -46,6 +46,7 @@ def build_reward_scorer(args, device):
             crop_top_ratio=args.hallucination_crop_top_ratio,
             occlusion_gap_max=args.occlusion_gap_max,
             occlusion_pos_thr=args.occlusion_pos_thr,
+            duplication_spike_max=args.duplication_spike_max,
             device_id=device.index if device.index is not None else 0,
         )
     if args.reward_backend == "hallucination_bottles":
@@ -132,6 +133,8 @@ def add_reward_args(p: argparse.ArgumentParser) -> None:
                     help="Max consecutive absent frames to suppress as occlusion")
     p.add_argument("--occlusion_pos_thr", type=float, default=0.15,
                     help="Max normalised L-inf centre shift for occlusion suppression")
+    p.add_argument("--duplication_spike_max", type=int, default=0,
+                    help="Max consecutive frames of count > expected to suppress as SAM3 noise (0=disabled)")
 
     # Bottle hallucination reward (SAM3 trajectory-based)
     p.add_argument("--bottle_hall_prompt", type=str, default="bottle",

@@ -145,14 +145,19 @@ SAM3-based object tracking: tracks specified objects across all video frames usi
 - Device placement: `torch.cuda.set_device(local_rank)` before `Sam3VideoPredictor()` init
 - With `--offload_model true`, single-GPU peak ~28GB; multi-GPU works within A100-80GB
 
+**Two-stage post-processing:**
+1. **Occlusion suppression** (disappearance): When count < expected for ≤ `occlusion_gap_max` consecutive frames and the object reappears within `occlusion_pos_thr` L∞ distance, suppress those frames.
+2. **Duplication spike suppression**: When count > expected for ≤ `duplication_spike_max` consecutive frames, suppress those frames. This filters SAM3 false positives where the robot gripper or shadows are briefly misidentified as an extra object.
+
 **Hallucination CLI args:**
 | Arg | Default | Description |
 |-----|---------|-------------|
 | `--hallucination_prompts` | `"red block" "green block" "blue block"` | Text prompts for SAM3 object tracking |
 | `--hallucination_expected_counts` | 1 per prompt | Expected count per object |
 | `--hallucination_crop_top_ratio` | 0.6667 | Crop top portion of frame (isolate main camera) |
-| `--occlusion_gap_max` | 5 | Max frames for occlusion suppression |
+| `--occlusion_gap_max` | 5 | Max frames for occlusion suppression (disappearance) |
 | `--occlusion_pos_thr` | 0.15 | Position threshold for occlusion suppression |
+| `--duplication_spike_max` | 0 | Max frames for duplication spike suppression (0=disabled) |
 
 **Debug output:** `reward_debug/step{NNNN}_{stem}/{video_stem}_CLEAN.mp4` or `_HALL.mp4` (SAM3 annotated video with bounding boxes)
 

@@ -36,6 +36,7 @@ torchrun --nproc_per_node=${GPU_NUM} --master_port ${MASTER_PORT} \
     --hallucination_crop_top_ratio 0.6667 \
     --occlusion_gap_max 7 \
     --occlusion_pos_thr 0.15 \
+    --duplication_spike_max 3 \
     --convert_model_dtype \
     --offload_model true \
     --max_train_steps 400 \
