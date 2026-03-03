@@ -29,6 +29,7 @@ class HallucinationRewardScorer(RewardScorer):
         crop_top_ratio: float = 2 / 3,
         occlusion_gap_max: int = 5,
         occlusion_pos_thr: float = 0.15,
+        duplication_spike_max: int = 0,
         device_id: int = 0,
     ):
         if prompts is None:
@@ -41,6 +42,7 @@ class HallucinationRewardScorer(RewardScorer):
         self._crop_top_ratio = crop_top_ratio
         self._occlusion_gap_max = occlusion_gap_max
         self._occlusion_pos_thr = occlusion_pos_thr
+        self._duplication_spike_max = duplication_spike_max
 
         # Build SAM3 with DDP env vars masked to avoid gloo/nccl conflicts.
         main_print(f"  Loading SAM3 VideoPredictor on cuda:{device_id} ...")
@@ -79,6 +81,7 @@ class HallucinationRewardScorer(RewardScorer):
                 predictor=self._predictor,
                 occlusion_gap_max=self._occlusion_gap_max,
                 occlusion_pos_thr=self._occlusion_pos_thr,
+                duplication_spike_max=self._duplication_spike_max,
                 quiet=True,
             )
         except Exception as exc:

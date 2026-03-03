@@ -87,6 +87,7 @@ def process_video(
     predictor=None,
     occlusion_gap_max: int = 5,
     occlusion_pos_thr: float = 0.15,
+    duplication_spike_max: int = 0,
     quiet: bool = False,
 ) -> dict:
     """Process a single video. Returns a summary dict.
@@ -202,6 +203,29 @@ def process_video(
 
         suppressed[prompt] = sup
 
+    # ── Post-process: suppress brief duplication spikes (count > expected) ────
+    if duplication_spike_max > 0:
+        for prompt in prompts:
+            n_frames = len(all_results[prompt])
+            expected = expected_counts.get(prompt, 1)
+            sup = suppressed[prompt]
+
+            fi = 0
+            while fi < n_frames:
+                count_fi = len(all_results[prompt][fi]["obj_ids"])
+                if count_fi > expected and not sup[fi]:
+                    spike_start = fi
+                    spike_end = fi + 1
+                    while spike_end < n_frames and len(all_results[prompt][spike_end]["obj_ids"]) > expected:
+                        spike_end += 1
+                    spike_len = spike_end - spike_start
+                    if spike_len <= duplication_spike_max:
+                        for sfi in range(spike_start, spike_end):
+                            sup[sfi] = True
+                    fi = spike_end
+                else:
+                    fi += 1
+
     # Re-read frames for annotation (from the JPEG dir, already cropped)
     _log("Rendering annotated video...")
     out_frames = []
@@ -280,6 +304,9 @@ def process_video(
         "occlusion_suppression": {
             "gap_max_frames": occlusion_gap_max,
             "position_threshold": occlusion_pos_thr,
+        },
+        "duplication_spike_suppression": {
+            "max_frames": duplication_spike_max,
         },
         "counts_over_time": counts_over_time,
         "total_hallucination_frames": sum(1 for r in rows if r["hallucination"]),
