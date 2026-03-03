@@ -2,11 +2,11 @@ export WANDB_DISABLED=true
 export WANDB_BASE_URL="https://api.wandb.ai"
 export WANDB_MODE=online
 
-GPU_NUM=${GPU_NUM:-1}
+GPU_NUM=${GPU_NUM:-4}
 MASTER_PORT=${MASTER_PORT:-19015}
 
 CKPT_DIR="ckpts/Wan2.2-TI2V-5B"
-PT_DIR="ckpts/vidar_ckpts/merged_vidar_lora"
+PT_DIR="ckpts/vidar_ckpt/merged_vidar_lora.pt"
 
 # Full dataset: put_bottles_dustbin (10 scenes)
 DATASET_JSON="data/rl_train/robotwin_put_bottles_dustbin.json"
