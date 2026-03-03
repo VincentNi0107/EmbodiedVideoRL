@@ -2,7 +2,7 @@ export WANDB_DISABLED=true
 export WANDB_BASE_URL="https://api.wandb.ai"
 export WANDB_MODE=online
 
-GPU_NUM=${GPU_NUM:-4}
+GPU_NUM=${GPU_NUM:-8}
 MASTER_PORT=${MASTER_PORT:-19012}
 
 CKPT_DIR="ckpts/Wan2.2-TI2V-5B"
@@ -47,7 +47,7 @@ torchrun --nproc_per_node=${GPU_NUM} --master_port ${MASTER_PORT} \
     --occlusion_pos_thr 0.15 \
     --duplication_spike_max 1 \
     --convert_model_dtype \
-    --offload_model true \
+    --offload_model false \
     --max_train_steps 400 \
     --learning_rate 1e-5 \
     --weight_decay 0.01 \
