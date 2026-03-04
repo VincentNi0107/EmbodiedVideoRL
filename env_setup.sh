@@ -12,4 +12,4 @@ pip install -r requirements-lint.txt
 pip install -e .
 
 pip install ml-collections absl-py inflect pydantic huggingface_hub protobuf
-pip install -U bitsandbytes
+pip install -U bitsandbytes pycocotools

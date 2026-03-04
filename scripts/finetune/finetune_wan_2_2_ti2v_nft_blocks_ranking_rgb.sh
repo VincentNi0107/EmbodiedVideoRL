@@ -6,7 +6,7 @@ GPU_NUM=${GPU_NUM:-8}
 MASTER_PORT=${MASTER_PORT:-19012}
 
 CKPT_DIR="ckpts/Wan2.2-TI2V-5B"
-PT_DIR="ckpts/vidar_ckpt/merged_vidar_lora.pt"
+PT_DIR="ckpts/vidar_ckpts/merged_vidar_lora.pt"
 
 # Full dataset: blocks_ranking_rgb (10 scenes)
 DATASET_JSON="data/rl_train/robotwin_blocks_ranking_rgb.json"
@@ -22,6 +22,8 @@ OUTPUT_DIR=${OUTPUT_DIR:-"data/outputs/nft_blocks_ranking_rgb/ng${NUM_GEN}_s${SE
 # LoRA config
 LORA_RANK=64
 LORA_ALPHA=64
+
+source .env
 
 echo ">>> Output dir: ${OUTPUT_DIR}"
 
@@ -51,6 +53,8 @@ torchrun --nproc_per_node=${GPU_NUM} --master_port ${MASTER_PORT} \
     --max_train_steps 400 \
     --learning_rate 1e-5 \
     --weight_decay 0.01 \
+    --gpt_api_base ${GPT_API_BASE} \
+    --gpt_api_key ${GPT_API_KEY} \
     --max_grad_norm 2.0 \
     --nft_beta 1.0 \
     --kl_beta 0.0001 \

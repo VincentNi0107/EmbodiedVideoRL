@@ -2,51 +2,51 @@
     {
         "prompt": "The whole scene is in a realistic, industrial art style with three views: a fixed rear camera, a movable left arm camera, and a movable right arm camera. The aloha robot is currently performing the following task: stack the three bowls on top of each other.",
         "filename_stem": "robotwin_stack_bowls_three_123500000",
-        "media_path": "/home/omz1504/code/vidar/data/test/stack_bowls_three/robotwin_stack_bowls_three_123500000.png"
+        "media_path": "data/rl_train/stack_bowls_three/robotwin_stack_bowls_three_123500000.png"
     },
     {
         "prompt": "The whole scene is in a realistic, industrial art style with three views: a fixed rear camera, a movable left arm camera, and a movable right arm camera. The aloha robot is currently performing the following task: stack the three bowls on top of each other.",
         "filename_stem": "robotwin_stack_bowls_three_123500004",
-        "media_path": "/home/omz1504/code/vidar/data/test/stack_bowls_three/robotwin_stack_bowls_three_123500004.png"
+        "media_path": "data/rl_train/stack_bowls_three/robotwin_stack_bowls_three_123500004.png"
     },
     {
         "prompt": "The whole scene is in a realistic, industrial art style with three views: a fixed rear camera, a movable left arm camera, and a movable right arm camera. The aloha robot is currently performing the following task: stack the three bowls on top of each other.",
         "filename_stem": "robotwin_stack_bowls_three_123500005",
-        "media_path": "/home/omz1504/code/vidar/data/test/stack_bowls_three/robotwin_stack_bowls_three_123500005.png"
+        "media_path": "data/rl_train/stack_bowls_three/robotwin_stack_bowls_three_123500005.png"
     },
     {
         "prompt": "The whole scene is in a realistic, industrial art style with three views: a fixed rear camera, a movable left arm camera, and a movable right arm camera. The aloha robot is currently performing the following task: stack the three bowls on top of each other.",
         "filename_stem": "robotwin_stack_bowls_three_123500006",
-        "media_path": "/home/omz1504/code/vidar/data/test/stack_bowls_three/robotwin_stack_bowls_three_123500006.png"
+        "media_path": "data/rl_train/stack_bowls_three/robotwin_stack_bowls_three_123500006.png"
     },
     {
         "prompt": "The whole scene is in a realistic, industrial art style with three views: a fixed rear camera, a movable left arm camera, and a movable right arm camera. The aloha robot is currently performing the following task: stack the three bowls on top of each other.",
         "filename_stem": "robotwin_stack_bowls_three_123500009",
-        "media_path": "/home/omz1504/code/vidar/data/test/stack_bowls_three/robotwin_stack_bowls_three_123500009.png"
+        "media_path": "data/rl_train/stack_bowls_three/robotwin_stack_bowls_three_123500009.png"
     },
     {
         "prompt": "The whole scene is in a realistic, industrial art style with three views: a fixed rear camera, a movable left arm camera, and a movable right arm camera. The aloha robot is currently performing the following task: stack the three bowls on top of each other.",
         "filename_stem": "robotwin_stack_bowls_three_123500011",
-        "media_path": "/home/omz1504/code/vidar/data/test/stack_bowls_three/robotwin_stack_bowls_three_123500011.png"
+        "media_path": "data/rl_train/stack_bowls_three/robotwin_stack_bowls_three_123500011.png"
     },
     {
         "prompt": "The whole scene is in a realistic, industrial art style with three views: a fixed rear camera, a movable left arm camera, and a movable right arm camera. The aloha robot is currently performing the following task: stack the three bowls on top of each other.",
         "filename_stem": "robotwin_stack_bowls_three_123500012",
-        "media_path": "/home/omz1504/code/vidar/data/test/stack_bowls_three/robotwin_stack_bowls_three_123500012.png"
+        "media_path": "data/rl_train/stack_bowls_three/robotwin_stack_bowls_three_123500012.png"
     },
     {
         "prompt": "The whole scene is in a realistic, industrial art style with three views: a fixed rear camera, a movable left arm camera, and a movable right arm camera. The aloha robot is currently performing the following task: stack the three bowls on top of each other.",
         "filename_stem": "robotwin_stack_bowls_three_123500013",
-        "media_path": "/home/omz1504/code/vidar/data/test/stack_bowls_three/robotwin_stack_bowls_three_123500013.png"
+        "media_path": "data/rl_train/stack_bowls_three/robotwin_stack_bowls_three_123500013.png"
     },
     {
         "prompt": "The whole scene is in a realistic, industrial art style with three views: a fixed rear camera, a movable left arm camera, and a movable right arm camera. The aloha robot is currently performing the following task: stack the three bowls on top of each other.",
         "filename_stem": "robotwin_stack_bowls_three_123500015",
-        "media_path": "/home/omz1504/code/vidar/data/test/stack_bowls_three/robotwin_stack_bowls_three_123500015.png"
+        "media_path": "data/rl_train/stack_bowls_three/robotwin_stack_bowls_three_123500015.png"
     },
     {
         "prompt": "The whole scene is in a realistic, industrial art style with three views: a fixed rear camera, a movable left arm camera, and a movable right arm camera. The aloha robot is currently performing the following task: stack the three bowls on top of each other.",
         "filename_stem": "robotwin_stack_bowls_three_123500016",
-        "media_path": "/home/omz1504/code/vidar/data/test/stack_bowls_three/robotwin_stack_bowls_three_123500016.png"
+        "media_path": "data/rl_train/stack_bowls_three/robotwin_stack_bowls_three_123500016.png"
     }
 ]
