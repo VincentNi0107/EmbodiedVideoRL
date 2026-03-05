@@ -35,6 +35,7 @@ import argparse
 import json
 import os
 import sys
+import time
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
@@ -441,6 +442,94 @@ def ode_rollout_single(
     return x0_pred
 
 
+def ode_rollout_batch(
+    dit, noises, z_img, mask2,
+    ctx_cond, ctx_null, seq_len,
+    sigmas, guide_scale, device,
+    max_batch_cfg=0,
+):
+    """Batched deterministic ODE rollout with CFG batching.
+
+    Generates B videos simultaneously, batching conditional + unconditional
+    forwards into a single DiT call per ODE step.  When B videos are
+    combined with CFG, each forward pass processes 2*B samples.
+
+    Args:
+        dit          : DiT model (possibly DDP-wrapped)
+        noises       : list of B noise tensors, each [C, F, H, W]
+        z_img        : encoded first frame [C, 1, H', W'] (shared)
+        mask2        : binary mask (shared)
+        ctx_cond     : conditional context (list of 1 tensor)
+        ctx_null     : unconditional context (list of 1 tensor)
+        seq_len      : int
+        sigmas       : sigma schedule tensor
+        guide_scale  : float, CFG scale
+        device       : CUDA device
+        max_batch_cfg: max items in a single DiT forward call
+                       (0 = 2*B = no sub-batching)
+
+    Returns:
+        list of B x0_pred tensors (clean-latent predictions)
+    """
+    B = len(noises)
+    if B == 0:
+        return []
+    S = len(sigmas) - 1
+    dtype = _dit_dtype(dit)
+
+    if max_batch_cfg <= 0:
+        max_batch_cfg = 2 * B
+
+    # Videos per sub-batch (each video needs 2 slots: cond + uncond)
+    vids_per_sub = max(1, max_batch_cfg // 2)
+
+    # Initialise all latents
+    latents = [
+        ((1.0 - mask2) * z_img + mask2 * noise).to(device).float()
+        for noise in noises
+    ]
+    x0_preds = list(latents)  # will be overwritten each ODE step
+
+    for i in range(S):
+        ts_single = _expand_timestep(mask2, sigmas[i], seq_len, device)  # [1, seq_len]
+
+        all_v_c: List[torch.Tensor] = [None] * B  # type: ignore[assignment]
+        all_v_u: List[torch.Tensor] = [None] * B  # type: ignore[assignment]
+
+        for sb_start in range(0, B, vids_per_sub):
+            sb_end = min(sb_start + vids_per_sub, B)
+            n = sb_end - sb_start
+
+            # Input list: [cond_0 … cond_{n-1}, uncond_0 … uncond_{n-1}]
+            lat_inputs = [latents[j].to(dtype) for j in range(sb_start, sb_end)]
+            x_list = lat_inputs + lat_inputs          # 2n elements
+            context_list = [ctx_cond[0]] * n + [ctx_null[0]] * n
+            ts_batch = ts_single.expand(2 * n, -1)   # [2n, seq_len]
+
+            with torch.no_grad(), torch.amp.autocast("cuda", dtype=torch.bfloat16):
+                outputs = dit(x_list, t=ts_batch, context=context_list, seq_len=seq_len)
+
+            for k in range(n):
+                all_v_c[sb_start + k] = outputs[k]
+                all_v_u[sb_start + k] = outputs[n + k]
+
+            del outputs, lat_inputs, x_list
+
+        # CFG + Euler ODE step for each video
+        new_latents = []
+        for j in range(B):
+            v = (all_v_u[j] + guide_scale * (all_v_c[j] - all_v_u[j])).float()
+            next_lat, x0_pred = flow_ode_step(v, latents[j], sigmas, i)
+            next_lat = (1.0 - mask2) * z_img.float() + mask2 * next_lat
+            new_latents.append(next_lat.detach())
+            x0_preds[j] = x0_pred
+
+        latents = new_latents
+        del all_v_c, all_v_u
+
+    return x0_preds
+
+
 # ──────────────────────────────────────────────────────────────────────────────
 # NFT: contrastive training step
 # ──────────────────────────────────────────────────────────────────────────────
@@ -742,6 +831,9 @@ def parse_args():
     # NFT hyper-parameters
     p.add_argument("--num_generations", type=int, default=4,
                     help="N videos per prompt per training step")
+    p.add_argument("--rollout_batch_size", type=int, default=0,
+                    help="Max CFG batch size during rollout (0 = auto = 2*N_local). "
+                         "Reduce if OOM during rollout phase.")
     p.add_argument("--nft_beta", type=float, default=1.0,
                     help="NFT interpolation beta: positive_pred = beta*cur + (1-beta)*old")
     p.add_argument("--kl_beta", type=float, default=0.0001,
@@ -775,6 +867,12 @@ def parse_args():
     p.add_argument("--lora_target_modules", type=str, nargs="+", default=None)
     p.add_argument("--resume_from_lora_checkpoint", type=str, default=None)
 
+    # wandb
+    p.add_argument("--wandb_project", type=str, default=None,
+                    help="Wandb project name (None = disable wandb logging)")
+    p.add_argument("--wandb_run_name", type=str, default=None,
+                    help="Wandb run name (default: auto-generated)")
+
     return p.parse_args()
 
 
@@ -804,6 +902,18 @@ def main():
     ckpt_dir = out_dir / "checkpoints"
     for d in (out_dir, vid_dir, reward_dir, ckpt_dir):
         d.mkdir(parents=True, exist_ok=True)
+
+    # ── wandb ───────────────────────────────────────────────────────
+    use_wandb = (rank == 0 and args.wandb_project is not None)
+    if use_wandb:
+        import wandb
+        wandb.init(
+            project=args.wandb_project,
+            name=args.wandb_run_name,
+            config=vars(args),
+            dir=str(out_dir),
+        )
+        main_print(f"Wandb logging enabled: project={args.wandb_project}")
 
     # ── model ──────────────────────────────────────────────────────
     use_ddp = world_size > 1
@@ -993,12 +1103,12 @@ def main():
         # DiT is already on GPU (moved before DDP wrapping)
 
         # ════════════════════════════════════════════════════
-        #  PHASE 1a: ROLLOUT — deterministic ODE with "old" adapter
+        #  PHASE 1a: ROLLOUT — batched ODE with "old" adapter
+        #  Batches multiple videos AND CFG (cond+uncond) into
+        #  a single DiT forward per ODE step for throughput.
         # ════════════════════════════════════════════════════
         dit_ddp.eval()
         dit_raw.set_adapter("old")  # Use old model for sampling
-
-        local_x0_preds: List[torch.Tensor] = []  # clean latents for training
 
         scene_suffix = fname_stem[-4:] if len(fname_stem) >= 4 else fname_stem
         step_vid_dir = vid_dir / f"step{step:04d}_{scene_suffix}"
@@ -1006,9 +1116,10 @@ def main():
         step_vid_dir.mkdir(parents=True, exist_ok=True)
         step_reward_dir.mkdir(parents=True, exist_ok=True)
 
-        pending_scores: List[tuple] = []
-
+        # Generate all noise tensors first
         base_seed = args.seed + step * N
+        noises: List[torch.Tensor] = []
+        video_meta: List[Tuple[int, int]] = []  # (global_idx, seed)
         for g_local in range(N_local):
             g = rank * N_local + g_local if use_ddp else g_local
             seed_g = base_seed + g
@@ -1017,17 +1128,31 @@ def main():
                 latent_shape, dtype=torch.float32,
                 generator=gen, device=device,
             )
+            noises.append(noise)
+            video_meta.append((g, seed_g))
 
-            x0_pred = ode_rollout_single(
-                dit_ddp, noise, z_img, mask2,
-                ctx_c, ctx_n, seq_len,
-                sigmas, args.sample_guide_scale,
-                device,
-            )
-            local_x0_preds.append(x0_pred.detach())
+        # Batched rollout: all N_local videos + CFG in one forward per ODE step
+        t_rollout_start = time.time()
+        local_x0_preds = ode_rollout_batch(
+            dit_ddp, noises, z_img, mask2,
+            ctx_c, ctx_n, seq_len,
+            sigmas, args.sample_guide_scale,
+            device,
+            max_batch_cfg=args.rollout_batch_size,
+        )
+        local_x0_preds = [x.detach() for x in local_x0_preds]
+        t_rollout_end = time.time()
+        main_print(
+            f"  Rollout: {N_local} videos in {t_rollout_end - t_rollout_start:.1f}s "
+            f"(batch_cfg={min(args.rollout_batch_size or 2*N_local, 2*N_local)})"
+        )
+        del noises
 
-            # Decode video for reward scoring
-            final_lat = x0_pred.to(device, dtype=model.param_dtype)
+        # Decode each video and prepare for reward scoring
+        pending_scores: List[tuple] = []
+        for g_local in range(N_local):
+            g, seed_g = video_meta[g_local]
+            final_lat = local_x0_preds[g_local].to(device, dtype=model.param_dtype)
             with torch.no_grad(), torch.amp.autocast("cuda", dtype=torch.bfloat16):
                 vids = model.vae.decode([final_lat])
 
@@ -1044,7 +1169,7 @@ def main():
             else:
                 pending_scores.append((None, None))
 
-            del noise, final_lat
+            del final_lat
 
         dit_raw.set_adapter("default")  # Switch back to default adapter
 
@@ -1246,6 +1371,20 @@ def main():
             with log_path.open("a") as f:
                 f.write(json.dumps(entry, ensure_ascii=False) + "\n")
 
+            if use_wandb:
+                wb_log = {
+                    "step": step,
+                    "mean_reward": entry["mean_reward"],
+                    "loss": entry["loss"],
+                    "grad_norm": entry["grad_norm"],
+                    "global_optim_step": entry["global_optim_step"],
+                }
+                for k in ("avg_policy_loss", "avg_positive_loss", "avg_negative_loss",
+                          "avg_kl_div", "avg_temporal_loss", "avg_total_loss", "avg_old_deviate"):
+                    if k in entry:
+                        wb_log[k] = entry[k]
+                wandb.log(wb_log, step=step)
+
         # ─── checkpoint ──────────────────────────────────
         if step % args.checkpointing_steps == 0:
             cp = ckpt_dir / f"lora_step{step:06d}.pt"
@@ -1288,6 +1427,9 @@ def main():
     if hasattr(scorer, 'shutdown'):
         main_print("Shutting down reward scorer ...")
         scorer.shutdown()
+
+    if use_wandb:
+        wandb.finish()
 
     if world_size > 1:
         dist.barrier()
