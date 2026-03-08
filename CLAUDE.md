@@ -99,21 +99,63 @@ Uses the flow model's original **deterministic ODE** sampling (no noise injectio
 | `--gradient_accumulation_steps 4` | 4 | Prompts accumulated before optimizer.step(); set to 1 for single-scene |
 | `--num_generations 8` | 8 | Videos per prompt; must be divisible by world_size for multi-GPU |
 
-### Distributed Training (both algorithms)
+### SFT — Supervised Fine-Tuning (`train_sft_wan_2_2_ti2v.py`)
 
-- `num_generations` videos split across GPUs: each rank generates `num_generations / world_size`
-- Rewards gathered via `all_gather` before z-score normalization (all ranks see all rewards)
+Standard supervised fine-tuning with ground-truth demonstration videos using flow-matching MSE loss. Based on DiffSynth-Studio's implementation.
+
+**Pipeline:**
+1. Load ground-truth video + prompt + reference image from dataset JSON
+2. Encode text (T5), reference image (VAE), and video (VAE) to latents
+3. Sample random timesteps from the 1000-step training schedule
+4. For each timestep:
+   - Construct noisy latent `x_t = (1-σ)*x0 + σ*noise`
+   - First-frame fusion: keep image latent at frame 0 (mask2 mechanism)
+   - Forward model → velocity prediction
+   - Velocity target = `noise - x0`
+   - BSMNTW-weighted MSE loss, excluding first frame
+5. Optimizer step with gradient accumulation
+
+**Key characteristics:**
+- Single LoRA adapter (no dual adapters, no reward scoring)
+- 1000-step training sigma schedule (not 20-step inference schedule)
+- BSMNTW timestep weighting (DiffSynth-Studio style)
+- Direct dense supervision → faster convergence than RL, but requires GT videos
+- Useful for: pre-training before RL, imitation learning, baseline comparison
+
+**SFT hyperparameters:**
+| Arg | Default | Effect |
+|-----|---------|--------|
+| `--num_train_timesteps 1000` | 1000 | Sigma schedule resolution for training |
+| `--timestep_fraction 0.05` | 0.05 | Fraction of 1000 timesteps trained per sample (50 timesteps) |
+| `--use_bsmntw true` | true | BSMNTW timestep weighting (false = uniform) |
+| `--num_epochs 100` | 100 | Epochs over the dataset |
+| `--learning_rate 1e-4` | 1e-4 | Higher than RL (1e-5) since supervision is stronger |
+| `--lora_rank 32` | 32 | Smaller rank often sufficient for SFT |
+| `--gradient_accumulation_steps 4` | 4 | Samples accumulated before optimizer.step() |
+
+**Dataset JSON format** (extends RL format with `video_path`):
+```json
+[{"prompt": "...", "media_path": "ref_img.png", "video_path": "demo.mp4", "filename_stem": "scene_001"}]
+```
+
+```bash
+bash scripts/finetune/finetune_wan_2_2_ti2v_sft.sh
+```
+
+### Distributed Training (all algorithms)
+
+- **GRPO/NFT:** `num_generations` videos split across GPUs: each rank generates `num_generations / world_size`. Rewards gathered via `all_gather` before z-score normalization.
+- **SFT:** Each rank processes different samples via `DistributedSampler`. No reward gathering needed.
 - Gradients synchronized via DDP `allreduce`
-- `num_generations` must be divisible by `world_size`
 - Default: 4 GPUs (A100-80GB)
 
 ### General Hyperparameter Notes
 
-- Learning rate: 1e-5 to 2e-5 (below 5e-6 leads to training failure)
+- Learning rate: 1e-5 to 2e-5 for RL (below 5e-6 leads to training failure); 1e-4 for SFT
 - `--max_grad_norm 2.0`: Reward collapse can occur if too high; reduce if unstable
-- `--timestep_fraction 0.5`: Train on 50% of denoising steps
+- `--timestep_fraction 0.5` (RL) / `0.05` (SFT): Fraction of denoising steps to train on
 - Checkpoints: `lora_stepXXXXXX.pt`; `--resume_from_lora_checkpoint` resumes from specific step
-- `--offload_model true`: Offload VAE/T5 to CPU during reward scoring and training phases
+- `--offload_model true`: Offload VAE/T5 to CPU during training phases
 
 ## Reward Functions
 
@@ -203,6 +245,40 @@ SAM3-based **trajectory tracking** for put_bottles_dustbin: tracks "bottle" acro
 
 **Debug output:** `reward_debug/step{NNNN}_{stem}/{video_stem}_CLEAN.mp4` or `_FAIL.mp4` (SAM3 annotated tracking video with color-coded bboxes, trajectory trails, and cx_cutoff line)
 
+### 4. Flow AEPE — Forward-Backward Consistency (`--reward_backend flow_aepe`)
+
+SEA-RAFT optical flow-based temporal consistency check: computes optical flow between consecutive frames in both directions (forward and backward), measures forward-backward End-Point Error (EPE). High EPE ⇒ temporal inconsistency ⇒ hallucination. Binary reward: 1.0 if `score >= threshold`, 0.0 otherwise.
+
+- Used for: **task-agnostic** hallucination detection (applicable to any task)
+- Pros: Task-agnostic (no object-specific prompts needed), detects temporal inconsistencies like object teleportation/morphing
+- Cons: Requires GPU (SEA-RAFT neural network); doesn't detect semantic errors (e.g. wrong object count if temporally smooth)
+
+**Implementation:** `FlowAEPERewardScorer` class in `fastvideo/reward/flow_aepe.py`. Based on WorldArena's `flow_aepe_metrics.py`. Uses SEA-RAFT (ECCV 2024) model for optical flow estimation.
+
+**Algorithm:**
+1. Read video frames (optionally crop wrist cameras via `crop_top_ratio`, subsample via `frame_step`)
+2. For each consecutive frame pair: compute forward flow (f₁→f₂) and backward flow (f₂→f₁) using SEA-RAFT
+3. Compute forward-backward consistency EPE: warp pixel through forward flow, then backward flow, measure displacement from original position
+4. Average EPE across all pairs → `avg_epe`
+5. Compute dynamic motion score (mean magnitude of top-5% motion pixels, soft-thresholded) → `dynamic_degree`
+6. Final score = `1/avg_epe`, modulated by `dynamic_degree` if scene is near-static (≤0.1213)
+7. Binary reward: `score >= threshold` → 1.0, else 0.0
+
+**SEA-RAFT model:** Uses `Tartan-C-T-TSKH-spring540x960-M` checkpoint (19.7M params) from HuggingFace `MemorySlices/Tartan-C-T-TSKH-spring540x960-M`. Config: `spring-M.json` (ResNet34 backbone, 4 iters, 540×960 resolution).
+
+**External dependency:** SEA-RAFT code at `/gpfs/projects/p33048/WorldArena/video_quality/WorldArena/third_party/SEA-RAFT/`, checkpoint at `third_party/checkpoints/Tartan-C-T-TSKH-spring540x960-M.pth`.
+
+**Flow AEPE CLI args:**
+| Arg | Default | Description |
+|-----|---------|-------------|
+| `--flow_aepe_cfg` | `.../SEA-RAFT/config/eval/spring-M.json` | SEA-RAFT config JSON path |
+| `--flow_aepe_ckpt` | `.../checkpoints/Tartan-C-T-TSKH-spring540x960-M.pth` | SEA-RAFT checkpoint path |
+| `--flow_aepe_threshold` | 0.5 | Flow score threshold for binary reward (score ≥ thr → reward=1) |
+| `--flow_aepe_frame_step` | 1 | Subsample frames (1=every frame, 2=every other, etc.) |
+| `--hallucination_crop_top_ratio` | 0.6667 | Shared; crops wrist cameras from bottom |
+
+**Performance:** ~3.4s per frame pair on A100 GPU, ~34s per frame pair on CPU. For 121-frame video (120 pairs): ~7 min (GPU) or ~68 min (CPU). Use `--flow_aepe_frame_step 5` for ~5× speedup.
+
 ### Reward Backend Summary
 
 | Backend | Flag | Used for | Status |
@@ -210,6 +286,7 @@ SAM3-based **trajectory tracking** for put_bottles_dustbin: tracks "bottle" acro
 | Gemini API | `--reward_backend gpt --gpt_model <model>` | put_object_cabinet | ✅ Training converged |
 | SAM3 Hallucination | `--reward_backend hallucination` | blocks_ranking_rgb | ✅ Training in progress |
 | SAM3 Bottle Trajectory | `--reward_backend hallucination_bottles` | put_bottles_dustbin | ✅ Training in progress |
+| Flow AEPE | `--reward_backend flow_aepe` | Task-agnostic temporal consistency | 🔧 Testing |
 | HPS-v2.1 | `--use_hpsv2` | Image models (SD, FLUX, Wan-2.1) | (upstream) |
 | VideoAlign | `--use_videoalign` | Video models (HunyuanVideo, SkyReels) | (upstream) |
 | PickScore | `--use_pickscore` | Alternative for FLUX | (upstream) |
@@ -275,6 +352,28 @@ ssh <node> "conda run -n wanx python tools/detect_flow_anomalies.py \
 ssh <node> "nohup bash tools/run_flow_anomaly_batch.sh 4 > flow_batch.log 2>&1 &"
 ```
 
+### Flow AEPE Batch Test (`tools/test_flow_aepe_reward.py`)
+
+Batch-evaluates `FlowAEPERewardScorer` on rollout videos. Outputs per-video scores, per-scene summaries, and a ranked list (worst EPE first = most likely hallucination).
+
+```bash
+# GPU (recommended)
+ssh <node> "conda run -n wanx --no-capture-output --cwd /gpfs/projects/p33048/DanceGRPO \
+    python tools/test_flow_aepe_reward.py \
+    --input-root data/outputs/rollout_robotwin_121 \
+    --out-dir    data/outputs/flow_aepe_blocks_ranking_rgb \
+    --pattern    'robotwin_blocks_ranking_rgb_*' \
+    --frame-step 1 --device 0"
+
+# Faster (subsample every 5th frame)
+python tools/test_flow_aepe_reward.py --frame-step 5
+
+# CPU fallback (slow)
+CUDA_VISIBLE_DEVICES="" python tools/test_flow_aepe_reward.py --frame-step 5
+```
+
+**Output:** `all_results.json` (per-video), `summary.json` (aggregate + per-scene), `ranked_by_epe.json` (sorted worst-first).
+
 ### SAM3 API Notes
 
 - Text prompts call `reset_state` internally — cannot track multiple text prompts simultaneously
@@ -323,6 +422,19 @@ ssh <node> "nohup conda run -n wanx --no-capture-output --cwd /gpfs/projects/p33
 bash scripts/finetune/finetune_wan_2_2_ti2v_grpo.sh
 ```
 
+### SFT (supervised fine-tuning with GT videos)
+```bash
+# Single GPU (default)
+bash scripts/finetune/finetune_wan_2_2_ti2v_sft.sh
+
+# Multi-GPU (4× A100-80GB)
+GPU_NUM=4 bash scripts/finetune/finetune_wan_2_2_ti2v_sft.sh
+
+# Custom dataset
+DATASET_JSON=data/sft_train/my_task.json OUTPUT_DIR=data/outputs/sft_my_task \
+    bash scripts/finetune/finetune_wan_2_2_ti2v_sft.sh
+```
+
 ### Key training arguments
 - `--ckpt_dir`: Wan2.2-TI2V-5B model directory (default: `ckpts/Wan2.2-TI2V-5B`)
 - `--pt_dir`: Pre-merged LoRA `.pt` weights (default: `ckpts/vidar_ckpts/vidar_merged_lora.pt`)
@@ -333,6 +445,27 @@ bash scripts/finetune/finetune_wan_2_2_ti2v_grpo.sh
 - `--reward_backend hallucination`: Reward via SAM3 hallucination detection — constant count (binary: 0/1)
 - `--reward_backend hallucination_bottles`: Reward via SAM3 trajectory-based hallucination — monotonic decrease (binary: 0/1)
 - `--use_lora true --lora_rank 64 --lora_alpha 64`: LoRA training
+- `--lora_target_modules`: Override LoRA target modules (see below)
+
+### LoRA Target Modules
+
+**Default (attention-only):** When `--lora_target_modules` is not specified, both GRPO and NFT scripts target attention layers only:
+```
+self_attn.q  self_attn.k  self_attn.v  self_attn.o
+cross_attn.q cross_attn.k cross_attn.v cross_attn.o
+```
+This yields ~67M trainable params per adapter (rank=64, 32 DiT blocks).
+
+**Full linear layers (attention + FFN):** To also target FFN layers (empirically better for fine-tuning quality, see QLoRA paper), add:
+```bash
+--lora_target_modules \
+    "self_attn.q" "self_attn.k" "self_attn.v" "self_attn.o" \
+    "cross_attn.q" "cross_attn.k" "cross_attn.v" "cross_attn.o" \
+    "ffn.0" "ffn.2"
+```
+This targets the two Linear layers in `WanAttentionBlock.ffn` (an `nn.Sequential(Linear(2048,8192), GELU, Linear(8192,2048))`), increasing params to ~109M per adapter (+63%). With dual NFT adapters, adds ~168MB VRAM at bf16 — fits on A100-80GB.
+
+**DiffSynth-Studio comparison:** DiffSynth's SFT training uses `q,k,v,o,ffn.0,ffn.2` (all linear) with rank=32, alpha=32 by default.
 - `--resume_from_lora_checkpoint`: Resume from a `.pt` checkpoint
 - `--max_train_steps`: Global step count (including any resumed steps)
 - `--checkpointing_steps 10`: Saves `lora_stepXXXXXX.pt` under `output_dir/checkpoints/`
@@ -388,20 +521,36 @@ data/rl_train/                              # Training datasets (prompt + refere
   stack_blocks_three/*.png
   stack_bowls_three/*.png
 
+data/sft_train/                             # SFT datasets (prompt + reference image + GT video)
+  robotwin_sft.json                         # JSON with video_path entries (user-provided)
+
 data/outputs/                               # All experiment outputs
   nft_put_object_cabinet/                   # NFT + Gemini reward (converged)
   nft_blocks_ranking_rgb/                   # NFT + SAM3 hallucination (in progress)
+  sft_robotwin/                             # SFT with GT videos
   rollout_robotwin_121/                     # Base model rollout videos (all 6 tasks)
   bottle_hall_50steps/                      # Bottle trajectory analysis (38/80 clean) + ground_truth.json
 ```
 
-**Dataset JSON format:**
+**RL Dataset JSON format:**
 ```json
 [
   {
     "prompt": "The whole scene is in a realistic, industrial art style ...",
     "filename_stem": "robotwin_put_object_cabinet_123500051",
     "media_path": "/path/to/reference_image.png"
+  }
+]
+```
+
+**SFT Dataset JSON format** (extends RL format with `video_path`):
+```json
+[
+  {
+    "prompt": "The whole scene is in a realistic, industrial art style ...",
+    "filename_stem": "robotwin_put_object_cabinet_123500051",
+    "media_path": "/path/to/reference_image.png",
+    "video_path": "/path/to/ground_truth_video.mp4"
   }
 ]
 ```
@@ -435,11 +584,13 @@ ckpts/                              # Model checkpoints (symlinks or real files)
 fastvideo/
   train_grpo_wan_2_2_ti2v.py        # GRPO training (SDE sampling + PPO)
   train_nft_wan_2_2_ti2v.py         # DiffusionNFT training (ODE sampling + contrastive)
+  train_sft_wan_2_2_ti2v.py         # SFT training (flow-matching MSE with GT videos)
   reward/
     sam3_utils.py                   #   Shared SAM3 helpers: extract_frames_to_jpeg, track_prompt, save_video_libx264
     hallucination_process.py        #   Core process_video() for constant-count hallucination detection
     hallucination.py                #   HallucinationRewardScorer (blocks: constant count)
     hallucination_bottles.py        #   BottleHallucinationRewardScorer (bottles: two-stage trajectory)
+    flow_aepe.py                    #   FlowAEPERewardScorer (SEA-RAFT forward-backward EPE)
     builder.py                      #   Reward backend factory + CLI args
   infer_nft.py                      # CLI inference script (NFT LoRA)
   server_nft.py                     # FastAPI server (NFT LoRA, vidar-compatible)
@@ -461,6 +612,7 @@ scripts/finetune/
   finetune_wan_2_2_ti2v_nft_put_object_cabinet.sh   # NFT + Gemini (4 GPU)
   finetune_wan_2_2_ti2v_nft_blocks_ranking_rgb.sh   # NFT + SAM3 hallucination (1 GPU default)
   finetune_wan_2_2_ti2v_nft_put_bottles_dustbin.sh  # NFT + SAM3 bottle trajectory (1 GPU default)
+  finetune_wan_2_2_ti2v_sft.sh                      # SFT with GT videos (1 GPU default)
 
 scripts/inference/
   infer_nft.sh                      # CLI inference
@@ -482,6 +634,7 @@ tools/                              # Standalone analysis, validation & visualiz
   batch_test_reward.py              # Batch Gemini API scoring
   validate_block_size_reward.py     # Batch validation of BlockSizeRankingRewardScorer
   validate_bowl_stack_reward.py     # Batch validation of BowlStackRewardScorer
+  test_flow_aepe_reward.py          # Batch flow-AEPE scoring on rollout videos
   extract_frames.py                 # Extract 6-frame grid PNGs from rollout videos
   rollout_bottles.py                # Single-GPU rollout for bottles task
   visualize_optical_flow.py         # Farneback flow visualization (HSV)

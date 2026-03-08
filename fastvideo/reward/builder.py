@@ -10,6 +10,7 @@ from fastvideo.reward.hallucination import HallucinationRewardScorer
 from fastvideo.reward.hallucination_bottles import BottleHallucinationRewardScorer
 from fastvideo.reward.hallucination_bowls import BowlStackRewardScorer
 from fastvideo.reward.hallucination_blocks_size import BlockSizeRankingRewardScorer
+from fastvideo.reward.flow_aepe import FlowAEPERewardScorer
 
 
 def build_reward_scorer(args, device):
@@ -84,6 +85,15 @@ def build_reward_scorer(args, device):
             occlusion_pos_thr=args.block_size_occlusion_pos_thr,
             device_id=device.index if device.index is not None else 0,
         )
+    if args.reward_backend == "flow_aepe":
+        return FlowAEPERewardScorer(
+            cfg_path=args.flow_aepe_cfg,
+            ckpt_path=args.flow_aepe_ckpt,
+            epe_threshold=args.flow_aepe_threshold,
+            crop_top_ratio=args.hallucination_crop_top_ratio,
+            frame_step=args.flow_aepe_frame_step,
+            device_id=device.index if device.index is not None else 0,
+        )
     raise ValueError(f"Unsupported reward_backend: {args.reward_backend}")
 
 
@@ -103,7 +113,8 @@ def add_reward_args(p: argparse.ArgumentParser) -> None:
     # Reward backend selection
     p.add_argument("--reward_backend", type=str, default="videoalign",
                     choices=["videoalign", "gpt", "hallucination", "hallucination_bottles",
-                             "hallucination_bowls", "hallucination_blocks_size", "none"])
+                             "hallucination_bowls", "hallucination_blocks_size",
+                             "flow_aepe", "none"])
 
     # GPT / Gemini
     p.add_argument("--gpt_api_base", type=str,
@@ -181,3 +192,17 @@ def add_reward_args(p: argparse.ArgumentParser) -> None:
                     help="Max frames for occlusion suppression")
     p.add_argument("--block_size_occlusion_pos_thr", type=float, default=0.15,
                     help="Position threshold for occlusion suppression")
+
+    # Flow AEPE reward (SEA-RAFT forward-backward consistency)
+    p.add_argument("--flow_aepe_cfg", type=str,
+                    default=str(Path("/gpfs/projects/p33048/WorldArena/video_quality/WorldArena"
+                                     "/third_party/SEA-RAFT/config/eval/spring-M.json")),
+                    help="SEA-RAFT config JSON path")
+    p.add_argument("--flow_aepe_ckpt", type=str,
+                    default=str(Path("/gpfs/projects/p33048/WorldArena/video_quality/WorldArena"
+                                     "/third_party/checkpoints/Tartan-C-T-TSKH-spring540x960-M.pth")),
+                    help="SEA-RAFT checkpoint path")
+    p.add_argument("--flow_aepe_threshold", type=float, default=0.5,
+                    help="Flow score threshold for binary reward (score >= thr → reward=1)")
+    p.add_argument("--flow_aepe_frame_step", type=int, default=1,
+                    help="Subsample frames (1=every frame, 2=every other, etc.)")

@@ -12,6 +12,7 @@ from fastvideo.reward.hallucination import HallucinationRewardScorer
 from fastvideo.reward.hallucination_bottles import BottleHallucinationRewardScorer
 from fastvideo.reward.hallucination_bowls import BowlStackRewardScorer
 from fastvideo.reward.hallucination_blocks_size import BlockSizeRankingRewardScorer
+from fastvideo.reward.flow_aepe import FlowAEPERewardScorer
 from fastvideo.reward.builder import build_reward_scorer, add_reward_args
 
 __all__ = [
@@ -23,6 +24,7 @@ __all__ = [
     "BottleHallucinationRewardScorer",
     "BowlStackRewardScorer",
     "BlockSizeRankingRewardScorer",
+    "FlowAEPERewardScorer",
     "build_reward_scorer",
     "add_reward_args",
     "save_reward_curve",
