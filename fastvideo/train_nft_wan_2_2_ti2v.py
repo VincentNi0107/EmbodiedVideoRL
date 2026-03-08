@@ -32,6 +32,7 @@ Key differences from the GRPO variant:
 """
 
 import argparse
+import contextlib
 import json
 import os
 import sys
@@ -1265,8 +1266,15 @@ def main():
 
         # Zero grad at start of accumulation window
         accum_idx = (step - 1) % args.gradient_accumulation_steps
+        is_optim_step = (accum_idx == args.gradient_accumulation_steps - 1)
         if accum_idx == 0:
             optimizer.zero_grad()
+
+        # Skip DDP gradient sync on non-final accumulation steps
+        no_sync_ctx = (
+            dit_ddp.no_sync if (use_ddp and not is_optim_step)
+            else contextlib.nullcontext
+        )
 
         if not skip_training:
             step_loss_terms: Dict[str, List[float]] = {
@@ -1274,54 +1282,54 @@ def main():
                 "kl_div": [], "temporal_loss": [], "total_loss": [], "old_deviate": [],
             }
 
-            for local_i in range(N_local):
-                x0_i = local_x0_preds[local_i].to(device)
-                r_i = local_r[local_i].item()
+            with no_sync_ctx():
+                for local_i in range(N_local):
+                    x0_i = local_x0_preds[local_i].to(device)
+                    r_i = local_r[local_i].item()
 
-                # Sample random subset of timesteps
-                perm = torch.randperm(trainable_steps)[:train_S]
+                    # Sample random subset of timesteps
+                    perm = torch.randperm(trainable_steps)[:train_S]
 
-                for ti in perm:
-                    ti_idx = int(ti.item())
+                    for ti in perm:
+                        ti_idx = int(ti.item())
 
-                    cur_pred, old_pred, ref_pred, x_t, t_val = nft_train_forward(
-                        dit_ddp, x0_i, z_img, mask2,
-                        ctx_c, seq_len,
-                        sigmas, ti_idx,
-                        device,
-                        skip_ref=(args.kl_beta < 1e-3),
-                    )
+                        cur_pred, old_pred, ref_pred, x_t, t_val = nft_train_forward(
+                            dit_ddp, x0_i, z_img, mask2,
+                            ctx_c, seq_len,
+                            sigmas, ti_idx,
+                            device,
+                            skip_ref=(args.kl_beta < 1e-3),
+                        )
 
-                    loss, loss_terms = nft_compute_loss(
-                        cur_pred, old_pred, ref_pred,
-                        x_t, x0_i, t_val, mask2,
-                        r=r_i,
-                        nft_beta=args.nft_beta,
-                        kl_beta=args.kl_beta,
-                        adv_clip_max=args.adv_clip_max,
-                        temporal_lambda=args.temporal_lambda,
-                    )
+                        loss, loss_terms = nft_compute_loss(
+                            cur_pred, old_pred, ref_pred,
+                            x_t, x0_i, t_val, mask2,
+                            r=r_i,
+                            nft_beta=args.nft_beta,
+                            kl_beta=args.kl_beta,
+                            adv_clip_max=args.adv_clip_max,
+                            temporal_lambda=args.temporal_lambda,
+                        )
 
-                    # Normalise by (samples × timesteps × grad_accum_steps)
-                    loss = loss / (N_local * train_S * args.gradient_accumulation_steps)
+                        # Normalise by (samples × timesteps × grad_accum_steps)
+                        loss = loss / (N_local * train_S * args.gradient_accumulation_steps)
 
-                    loss.backward()
-                    accum_loss += loss.detach().item()
-                    accum_n_fwd += 1
+                        loss.backward()
+                        accum_loss += loss.detach().item()
+                        accum_n_fwd += 1
 
-                    for k, v in loss_terms.items():
-                        step_loss_terms[k].append(v.item())
+                        for k, v in loss_terms.items():
+                            step_loss_terms[k].append(v.item())
 
-                    del cur_pred, old_pred, ref_pred, x_t, loss
+                        del cur_pred, old_pred, ref_pred, x_t, loss
 
-                del x0_i
+                    del x0_i
         else:
             step_loss_terms = {}
 
         step_loss = accum_loss
 
         # Optimiser step only every gradient_accumulation_steps
-        is_optim_step = (accum_idx == args.gradient_accumulation_steps - 1)
         if is_optim_step:
             gn = torch.nn.utils.clip_grad_norm_(
                 [p for p in dit_raw.parameters() if p.requires_grad],
