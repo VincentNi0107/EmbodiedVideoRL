@@ -1,5 +1,5 @@
-export WANDB_DISABLED=true
-export WANDB_BASE_URL="https://api.wandb.ai"
+export WANDB_DISABLED=false
+export WANDB_PROJECT="DanceGRPO"
 export WANDB_MODE=online
 
 GPU_NUM=${GPU_NUM:-8}
@@ -10,13 +10,23 @@ PT_DIR="ckpts/vidar_ckpts/merged_vidar_lora.pt"
 
 # Full dataset: put_object_cabinet (10 scenes)
 DATASET_JSON="data/rl_train/robotwin_put_object_cabinet.json"
-OUTPUT_DIR="data/outputs/nft_put_object_cabinet"
+
+# Tunable hyperparameters (override via env vars)
+NUM_GEN=${NUM_GEN:-16}
+SEED=${SEED:-42}
+TEMPORAL_LAMBDA=${TEMPORAL_LAMBDA:-0.0}
+KL_BETA=${KL_BETA:-0.001}
+
+# Auto-generate OUTPUT_DIR from hyperparams
+OUTPUT_DIR=${OUTPUT_DIR:-"data/outputs/nft_put_object_cabinet/ng${NUM_GEN}_s${SEED}_tl${TEMPORAL_LAMBDA}_kl${KL_BETA}"}
 
 # LoRA config
 LORA_RANK=64
 LORA_ALPHA=64
 
 source .env
+
+echo ">>> Output dir: ${OUTPUT_DIR}"
 
 torchrun --nproc_per_node=${GPU_NUM} --master_port ${MASTER_PORT} \
     fastvideo/train_nft_wan_2_2_ti2v.py \
@@ -30,8 +40,8 @@ torchrun --nproc_per_node=${GPU_NUM} --master_port ${MASTER_PORT} \
     --sample_steps 20 \
     --sample_shift 5.0 \
     --sample_guide_scale 5.0 \
-    --num_generations 8 \
-    --seed 42 \
+    --num_generations ${NUM_GEN} \
+    --seed ${SEED} \
     --max_samples -1 \
     --reward_backend gpt \
     --gpt_model gemini-3-flash-preview \
@@ -40,17 +50,17 @@ torchrun --nproc_per_node=${GPU_NUM} --master_port ${MASTER_PORT} \
     --gpt_temperature 0.0 \
     --convert_model_dtype \
     --offload_model false \
-    --max_train_steps 200 \
+    --max_train_steps 400 \
     --learning_rate 1e-5 \
     --weight_decay 0.01 \
     --max_grad_norm 2.0 \
     --nft_beta 1.0 \
-    --kl_beta 0.0001 \
+    --kl_beta ${KL_BETA} \
     --adv_clip_max 1.0 \
     --timestep_fraction 0.5 \
     --decay_type 1 \
-    --temporal_lambda 0.1 \
-    --gradient_accumulation_steps 2 \
+    --temporal_lambda ${TEMPORAL_LAMBDA} \
+    --gradient_accumulation_steps 4 \
     --checkpointing_steps 10 \
     --lora_rank ${LORA_RANK} \
     --lora_alpha ${LORA_ALPHA}

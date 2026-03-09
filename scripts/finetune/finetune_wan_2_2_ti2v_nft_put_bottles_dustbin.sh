@@ -1,20 +1,32 @@
-export WANDB_DISABLED=true
-export WANDB_BASE_URL="https://api.wandb.ai"
+export WANDB_DISABLED=false
+export WANDB_PROJECT="DanceGRPO"
 export WANDB_MODE=online
 
-GPU_NUM=${GPU_NUM:-4}
+GPU_NUM=${GPU_NUM:-8}
 MASTER_PORT=${MASTER_PORT:-19015}
 
 CKPT_DIR="ckpts/Wan2.2-TI2V-5B"
-PT_DIR="ckpts/vidar_ckpt/merged_vidar_lora.pt"
+PT_DIR="ckpts/vidar_ckpts/merged_vidar_lora.pt"
 
 # Full dataset: put_bottles_dustbin (10 scenes)
 DATASET_JSON="data/rl_train/robotwin_put_bottles_dustbin.json"
-OUTPUT_DIR="data/outputs/nft_put_bottles_dustbin"
+
+# Tunable hyperparameters (override via env vars)
+NUM_GEN=${NUM_GEN:-16}
+SEED=${SEED:-42}
+TEMPORAL_LAMBDA=${TEMPORAL_LAMBDA:-0.0}
+KL_BETA=${KL_BETA:-0.001}
+
+# Auto-generate OUTPUT_DIR from hyperparams
+OUTPUT_DIR=${OUTPUT_DIR:-"data/outputs/nft_put_bottles_dustbin/ng${NUM_GEN}_s${SEED}_tl${TEMPORAL_LAMBDA}_kl${KL_BETA}"}
 
 # LoRA config
 LORA_RANK=64
 LORA_ALPHA=64
+
+source .env
+
+echo ">>> Output dir: ${OUTPUT_DIR}"
 
 torchrun --nproc_per_node=${GPU_NUM} --master_port ${MASTER_PORT} \
     fastvideo/train_nft_wan_2_2_ti2v.py \
@@ -28,8 +40,8 @@ torchrun --nproc_per_node=${GPU_NUM} --master_port ${MASTER_PORT} \
     --sample_steps 50 \
     --sample_shift 5.0 \
     --sample_guide_scale 5.0 \
-    --num_generations 8 \
-    --seed 42 \
+    --num_generations ${NUM_GEN} \
+    --seed ${SEED} \
     --max_samples -1 \
     --reward_backend hallucination_bottles \
     --hallucination_crop_top_ratio 0.6667 \
@@ -38,20 +50,19 @@ torchrun --nproc_per_node=${GPU_NUM} --master_port ${MASTER_PORT} \
     --bottle_spike_max 3 \
     --bottle_filter_max_gap 5 \
     --convert_model_dtype \
-    --offload_model true \
-    --max_train_steps 200 \
+    --offload_model false \
+    --max_train_steps 400 \
     --learning_rate 1e-5 \
     --weight_decay 0.01 \
     --max_grad_norm 2.0 \
     --nft_beta 1.0 \
-    --kl_beta 0.0001 \
+    --kl_beta ${KL_BETA} \
     --adv_clip_max 1.0 \
     --timestep_fraction 0.5 \
     --decay_type 1 \
-    --temporal_lambda 0.0 \
+    --temporal_lambda ${TEMPORAL_LAMBDA} \
     --gradient_accumulation_steps 4 \
     --checkpointing_steps 10 \
     --lora_rank ${LORA_RANK} \
-    --lora_alpha ${LORA_ALPHA} 
-
-    # -resume_from_lora_checkpoint data/outputs/nft_put_bottles_dustbin/checkpoints/lora_step000060.pt
+    --lora_alpha ${LORA_ALPHA}
+    # --resume_from_lora_checkpoint data/outputs/nft_put_bottles_dustbin/checkpoints/lora_step000060.pt
