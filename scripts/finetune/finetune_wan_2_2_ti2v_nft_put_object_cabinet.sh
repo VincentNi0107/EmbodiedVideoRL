@@ -1,12 +1,12 @@
 export WANDB_DISABLED=false
-export WANDB_PROJECT="DanceGRPO"
+export WANDB_PROJECT="EmbodiedVideoRL"
 export WANDB_MODE=online
 
 GPU_NUM=${GPU_NUM:-8}
 MASTER_PORT=${MASTER_PORT:-19013}
 
 CKPT_DIR="ckpts/Wan2.2-TI2V-5B"
-PT_DIR="ckpts/vidar_ckpts/merged_vidar_lora.pt"
+PT_DIR="ckpts/vidar_ckpt/merged_vidar_lora.pt"
 
 # Full dataset: put_object_cabinet (10 scenes)
 DATASET_JSON="data/rl_train/robotwin_put_object_cabinet.json"
@@ -25,6 +25,8 @@ LORA_RANK=64
 LORA_ALPHA=64
 
 source .env
+
+WANDB_RUN_NAME=${OUTPUT_DIR#data/outputs/}
 
 echo ">>> Output dir: ${OUTPUT_DIR}"
 
@@ -63,4 +65,6 @@ torchrun --nproc_per_node=${GPU_NUM} --master_port ${MASTER_PORT} \
     --gradient_accumulation_steps 4 \
     --checkpointing_steps 10 \
     --lora_rank ${LORA_RANK} \
-    --lora_alpha ${LORA_ALPHA}
+    --lora_alpha ${LORA_ALPHA} \
+    --wandb_project ${WANDB_PROJECT} \
+    --wandb_run_name "${WANDB_RUN_NAME}"
