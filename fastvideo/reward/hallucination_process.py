@@ -89,12 +89,19 @@ def process_video(
     occlusion_pos_thr: float = 0.15,
     duplication_spike_max: int = 0,
     quiet: bool = False,
+    skip_render: bool = False,
+    frames_dir: str | None = None,
 ) -> dict:
     """Process a single video. Returns a summary dict.
 
     If *predictor* is provided it is reused (caller manages lifecycle).
     Otherwise a new one is built and shut down within this call.
     If *quiet* is True, suppress all print output and SAM3 progress bars / logs.
+    If *skip_render* is True, skip annotated video rendering (saves ~10-15s
+    per video).  Hallucination statistics are still computed.
+    If *frames_dir* is provided, use the pre-extracted (and optionally
+    pre-cropped) JPEG frames instead of decoding from *input_path*.
+    The caller retains ownership — this function will NOT delete *frames_dir*.
     """
     from sam3.model_builder import build_sam3_video_predictor
 
@@ -103,28 +110,39 @@ def process_video(
             print(*args, **kwargs)
 
     own_predictor = predictor is None
+    own_jpeg = frames_dir is None  # True → we extract frames and must clean up
 
-    # Read video info
-    cap = cv2.VideoCapture(input_path)
-    fps = cap.get(cv2.CAP_PROP_FPS)
-    w = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
-    h_full = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
-    total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
-    cap.release()
+    if frames_dir is not None:
+        # Frames already extracted (and cropped) by caller — infer metadata
+        jpeg_dir = frames_dir
+        jpeg_files = sorted(f for f in os.listdir(jpeg_dir) if f.endswith(".jpg"))
+        total_frames = len(jpeg_files)
+        sample = cv2.imread(os.path.join(jpeg_dir, jpeg_files[0]))
+        h, w = sample.shape[:2]
+        fps = 16.0  # default; only matters for debug video rendering
+        crop_h = None  # already cropped
+    else:
+        # Read video info
+        cap = cv2.VideoCapture(input_path)
+        fps = cap.get(cv2.CAP_PROP_FPS)
+        w = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+        h_full = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+        total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+        cap.release()
 
-    crop_h = None
-    if crop_top_ratio < 1.0:
-        crop_h = (int(h_full * crop_top_ratio)) // 16 * 16
-    h = crop_h if crop_h else h_full
+        crop_h = None
+        if crop_top_ratio < 1.0:
+            crop_h = (int(h_full * crop_top_ratio)) // 16 * 16
+        h = crop_h if crop_h else h_full
+
+        # Extract frames to JPEG dir (with optional crop)
+        _log("Extracting frames...")
+        jpeg_dir = extract_frames_to_jpeg(input_path, crop_h=crop_h)
+        _log(f"  Frames saved to {jpeg_dir}")
 
     _log(f"Video: {total_frames} frames, {w}x{h} @ {fps:.1f} fps")
     _log(f"Prompts: {prompts}")
     _log(f"Expected counts: {expected_counts}")
-
-    # Extract frames to JPEG dir (with optional crop)
-    _log("Extracting frames...")
-    jpeg_dir = extract_frames_to_jpeg(input_path, crop_h=crop_h)
-    _log(f"  Frames saved to {jpeg_dir}")
 
     # Build predictor if not provided
     if own_predictor:
@@ -226,19 +244,23 @@ def process_video(
                 else:
                     fi += 1
 
-    # Re-read frames for annotation (from the JPEG dir, already cropped)
-    _log("Rendering annotated video...")
-    out_frames = []
+    # ── Build per-frame stats (always) and render annotated video (optional) ──
     rows = []
     hallucination_events = []
+    out_frames = [] if not skip_render else None
+
+    if not skip_render:
+        _log("Rendering annotated video...")
 
     for fi in range(total_frames):
-        frame_bgr = cv2.imread(os.path.join(jpeg_dir, f"{fi:06d}.jpg"))
-        ann = draw_frame(frame_bgr, prompts, all_results, fi,
-                         expected_counts, total_frames)
-        out_frames.append(ann)
+        # Render annotated frame only when needed
+        if not skip_render:
+            frame_bgr = cv2.imread(os.path.join(jpeg_dir, f"{fi:06d}.jpg"))
+            ann = draw_frame(frame_bgr, prompts, all_results, fi,
+                             expected_counts, total_frames)
+            out_frames.append(ann)
 
-        # Build per-frame row
+        # Build per-frame row (always — needed for hallucination summary)
         row = {"frame_idx": fi}
         is_hall = False
         for prompt in prompts:
@@ -263,13 +285,15 @@ def process_video(
         row["hallucination"] = is_hall
         rows.append(row)
 
-    # Save video
-    os.makedirs(os.path.dirname(output_video) or ".", exist_ok=True)
-    _log(f"Saving video ({len(out_frames)} frames)...")
-    save_video_libx264(out_frames, output_video, fps)
+    # Save annotated video (skip when skip_render=True)
+    if not skip_render and output_video:
+        os.makedirs(os.path.dirname(output_video) or ".", exist_ok=True)
+        _log(f"Saving video ({len(out_frames)} frames)...")
+        save_video_libx264(out_frames, output_video, fps)
 
-    # Cleanup temp frames
-    shutil.rmtree(jpeg_dir, ignore_errors=True)
+    # Cleanup temp frames (only if we created them)
+    if own_jpeg:
+        shutil.rmtree(jpeg_dir, ignore_errors=True)
 
     # Save CSV (optional)
     if output_csv:

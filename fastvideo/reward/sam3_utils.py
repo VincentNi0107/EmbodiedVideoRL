@@ -37,6 +37,36 @@ def save_video_libx264(frames_bgr: list, output_path: str, fps: float) -> None:
                     normalize=True, value_range=(-1, 1))
 
 
+def tensor_to_jpeg_dir(video_tensor: torch.Tensor,
+                       crop_h: int | None = None) -> str:
+    """Convert a video tensor directly to a JPEG directory (SAM3 input format).
+
+    This bypasses the mp4 encode→decode roundtrip for ~5-7s savings per video.
+
+    Args:
+        video_tensor: shape (C, F, H, W), values in [-1, 1], RGB order.
+        crop_h: if set, keep only the top *crop_h* pixel rows of each frame.
+
+    Returns:
+        Temp directory path containing ``{000000.jpg, 000001.jpg, ...}``.
+    """
+    tmpdir = tempfile.mkdtemp(prefix="sam3_frames_")
+    # (C, F, H, W) → (F, H, W, C), float → uint8
+    frames = video_tensor.detach().float().clamp(-1, 1)
+    frames = ((frames + 1.0) * 127.5).to(torch.uint8)
+    frames = frames.permute(1, 2, 3, 0).cpu().numpy()  # (F, H, W, C) RGB
+
+    for idx in range(frames.shape[0]):
+        frame_rgb = frames[idx]
+        if crop_h is not None:
+            frame_rgb = frame_rgb[:crop_h]
+        # RGB → BGR for cv2.imwrite
+        frame_bgr = frame_rgb[:, :, ::-1]
+        cv2.imwrite(os.path.join(tmpdir, f"{idx:06d}.jpg"), frame_bgr)
+
+    return tmpdir
+
+
 def extract_frames_to_jpeg(video_path: str, crop_h: int | None = None) -> str:
     """Extract video frames to a temp JPEG directory (SAM3 prefers JPEG folders).
 

@@ -1115,7 +1115,8 @@ def main():
         step_vid_dir = vid_dir / f"step{step:04d}_{scene_suffix}"
         step_reward_dir = reward_dir / f"step{step:04d}_{scene_suffix}"
         step_vid_dir.mkdir(parents=True, exist_ok=True)
-        step_reward_dir.mkdir(parents=True, exist_ok=True)
+        if not args.skip_reward_debug_video:
+            step_reward_dir.mkdir(parents=True, exist_ok=True)
 
         # Generate all noise tensors first
         base_seed = args.seed + step * N
@@ -1149,16 +1150,31 @@ def main():
         )
         del noises
 
-        # Decode each video and prepare for reward scoring
-        pending_scores: List[tuple] = []
+        # Batch VAE decode: decode all N_local videos in one call.
+        # Wan2_2_VAE.decode() accepts a list of latent tensors and processes
+        # each internally; batching avoids repeated autocast/function overhead.
+        _decode_lats = [
+            local_x0_preds[gl].to(device, dtype=model.param_dtype)
+            for gl in range(N_local)
+        ]
+        with torch.no_grad(), torch.amp.autocast("cuda", dtype=torch.bfloat16):
+            _decoded_vids = model.vae.decode(_decode_lats)
+        del _decode_lats
+
+        # For SAM3-based backends, create JPEG frames directly from the
+        # decoded tensor — bypasses the mp4 encode→decode roundtrip (~5-7s).
+        _is_sam3_backend = args.reward_backend in (
+            "hallucination", "hallucination_bottles",
+            "hallucination_bowls", "hallucination_blocks_size",
+        )
+        pending_scores: List[tuple] = []  # (video_path, dbg_base, frames_dir)
         for g_local in range(N_local):
             g, seed_g = video_meta[g_local]
-            final_lat = local_x0_preds[g_local].to(device, dtype=model.param_dtype)
-            with torch.no_grad(), torch.amp.autocast("cuda", dtype=torch.bfloat16):
-                vids = model.vae.decode([final_lat])
+            vid = (_decoded_vids[g_local]
+                   if (_decoded_vids and g_local < len(_decoded_vids))
+                   else None)
 
-            if vids and vids[0] is not None:
-                vid = vids[0]
+            if vid is not None:
                 vp = str(step_vid_dir / f"{fname_stem}_g{g:03d}_s{seed_g}.mp4")
                 save_video(
                     tensor=vid[None], save_file=vp,
@@ -1166,11 +1182,23 @@ def main():
                     normalize=True, value_range=(-1, 1),
                 )
                 dbg_base = f"{fname_stem}_g{g:03d}_s{seed_g}"
-                pending_scores.append((vp, dbg_base))
+                # Create pre-cropped JPEG frames from tensor for SAM3 backends
+                frames_dir = None
+                if _is_sam3_backend:
+                    from fastvideo.reward.sam3_utils import tensor_to_jpeg_dir
+                    oh = vid.shape[2]  # vid shape: (C, F, H, W)
+                    crop_h = None
+                    if args.hallucination_crop_top_ratio < 1.0:
+                        crop_h = (int(oh * args.hallucination_crop_top_ratio)) // 16 * 16
+                    frames_dir = tensor_to_jpeg_dir(vid, crop_h=crop_h)
+                pending_scores.append((vp, dbg_base, frames_dir))
             else:
-                pending_scores.append((None, None))
+                pending_scores.append((None, None, None))
 
-            del final_lat
+            # Free decoded video VRAM incrementally after processing
+            if _decoded_vids and g_local < len(_decoded_vids):
+                _decoded_vids[g_local] = None
+        del _decoded_vids
 
         dit_raw.set_adapter("default")  # Switch back to default adapter
 
@@ -1178,15 +1206,17 @@ def main():
         #  PHASE 1b: REWARD SCORING
         # ════════════════════════════════════════════════════
         local_rws: List[float] = []
-        for vp, dbg_base in pending_scores:
+        for vp, dbg_base, frames_dir in pending_scores:
             if vp is not None:
-                dbg_path = str(step_reward_dir / f"{dbg_base}.jpg")
+                dbg_path = (None if args.skip_reward_debug_video
+                            else str(step_reward_dir / f"{dbg_base}.jpg"))
                 try:
                     rd = scorer.score(
                         prompt=prompt,
                         first_frame=None,
                         video_path=vp,
                         debug_save_path=dbg_path,
+                        frames_dir=frames_dir,
                     )
                 except Exception as exc:
                     rd = {"reward": -10.0, "error": str(exc)}
@@ -1209,6 +1239,10 @@ def main():
                 rd = {"reward": -10.0, "error": "video_none"}
                 rw_val = float(rd["reward"])
             local_rws.append(rw_val)
+            # Cleanup pre-extracted JPEG frames (training loop owns this dir)
+            if frames_dir is not None:
+                import shutil
+                shutil.rmtree(frames_dir, ignore_errors=True)
 
         # ─── gather rewards across ranks ──────────────────
         if use_ddp:

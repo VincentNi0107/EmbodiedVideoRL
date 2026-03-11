@@ -50,6 +50,7 @@ torchrun --nproc_per_node=${GPU_NUM} --master_port ${MASTER_PORT} \
     --gpt_api_base ${GPT_API_BASE} \
     --gpt_api_key ${GPT_API_KEY} \
     --gpt_temperature 0.0 \
+    --skip_reward_debug_video true \
     --convert_model_dtype \
     --offload_model false \
     --max_train_steps 400 \

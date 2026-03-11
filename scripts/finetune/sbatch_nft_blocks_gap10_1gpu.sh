@@ -55,6 +55,7 @@ conda run -n wanx --no-capture-output --cwd /gpfs/projects/p33048/DanceGRPO \
     --hallucination_crop_top_ratio 0.6667 \
     --occlusion_gap_max 10 \
     --occlusion_pos_thr 0.15 \
+    --skip_reward_debug_video true \
     --convert_model_dtype \
     --offload_model true \
     --max_train_steps 200 \

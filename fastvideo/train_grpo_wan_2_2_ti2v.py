@@ -1183,7 +1183,8 @@ def main():
         step_vid_dir = vid_dir / f"step{step:04d}_{scene_suffix}"
         step_reward_dir = reward_dir / f"step{step:04d}_{scene_suffix}"
         step_vid_dir.mkdir(parents=True, exist_ok=True)
-        step_reward_dir.mkdir(parents=True, exist_ok=True)
+        if not args.skip_reward_debug_video:
+            step_reward_dir.mkdir(parents=True, exist_ok=True)
 
         # Collect (video_path, debug_base_name, first_frame_pil) for deferred scoring
         pending_scores: List[tuple] = []  # (video_path, debug_base, first_frame_pil | None)
@@ -1249,15 +1250,16 @@ def main():
                     rd = {"reward": -10.0, "error": str(exc)}
                 rw_val = float(rd["reward"])
                 # Save debug image with PASS/FAIL in filename
-                tag = "PASS" if rw_val > 0 else "FAIL"
-                dbg_path = str(step_reward_dir / f"{dbg_base}_{tag}.jpg")
-                grid_bgr = rd.get("_grid_bgr")
-                resp_text = rd.get("_response_text")
-                if grid_bgr is not None and resp_text is not None:
-                    try:
-                        GPTRewardScorer._save_debug_image(grid_bgr, resp_text, dbg_path)
-                    except Exception as e:
-                        main_print(f"  [debug img] save failed: {e}")
+                if not args.skip_reward_debug_video:
+                    tag = "PASS" if rw_val > 0 else "FAIL"
+                    dbg_path = str(step_reward_dir / f"{dbg_base}_{tag}.jpg")
+                    grid_bgr = rd.get("_grid_bgr")
+                    resp_text = rd.get("_response_text")
+                    if grid_bgr is not None and resp_text is not None:
+                        try:
+                            GPTRewardScorer._save_debug_image(grid_bgr, resp_text, dbg_path)
+                        except Exception as e:
+                            main_print(f"  [debug img] save failed: {e}")
             else:
                 rd = {"reward": -10.0, "error": "video_none"}
                 rw_val = float(rd["reward"])

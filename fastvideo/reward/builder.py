@@ -1,6 +1,7 @@
 """Reward scorer factory and CLI argument helpers."""
 
 import argparse
+from pathlib import Path
 from typing import Any
 
 from fastvideo.reward.base import NoRewardScorer
@@ -192,6 +193,11 @@ def add_reward_args(p: argparse.ArgumentParser) -> None:
                     help="Max frames for occlusion suppression")
     p.add_argument("--block_size_occlusion_pos_thr", type=float, default=0.15,
                     help="Position threshold for occlusion suppression")
+
+    # Debug video rendering (shared across all SAM3-based backends)
+    p.add_argument("--skip_reward_debug_video", type=_str2bool, default=False,
+                    help="Skip rendering annotated debug videos during reward scoring. "
+                         "Saves ~10-15s per video per step. Reward values are unaffected.")
 
     # Flow AEPE reward (SEA-RAFT forward-backward consistency)
     p.add_argument("--flow_aepe_cfg", type=str,

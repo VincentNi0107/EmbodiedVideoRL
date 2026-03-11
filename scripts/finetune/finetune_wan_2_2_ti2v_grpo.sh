@@ -43,6 +43,7 @@ torchrun --nproc_per_node=${GPU_NUM} --master_port ${MASTER_PORT} \
     --reward_backend gpt \
     --gpt_model gemini-3-flash-preview \
     --gpt_temperature 0.0 \
+    --skip_reward_debug_video true \
     --convert_model_dtype \
     --offload_model false \
     --max_train_steps ${MAX_TRAIN_STEPS} \

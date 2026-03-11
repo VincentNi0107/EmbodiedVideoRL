@@ -19,12 +19,13 @@ class RewardScorer:
     def score(
         self, prompt: str, first_frame: Image.Image,
         video_path: Optional[str] = None,
+        frames_dir: Optional[str] = None,
     ) -> Dict[str, float]:
         raise NotImplementedError
 
 
 class NoRewardScorer(RewardScorer):
-    def score(self, prompt, first_frame, video_path=None):
+    def score(self, prompt, first_frame, video_path=None, frames_dir=None):
         return {"reward": 0.0}
 
 

@@ -238,6 +238,7 @@ class FlowAEPERewardScorer(RewardScorer):
         first_frame: Image.Image,
         video_path: Optional[str] = None,
         debug_save_path: Optional[str] = None,
+        frames_dir: Optional[str] = None,
     ) -> Dict[str, float]:
         if video_path is None:
             return {"reward": 0.0, "_response_text": "[ERROR] no video_path"}

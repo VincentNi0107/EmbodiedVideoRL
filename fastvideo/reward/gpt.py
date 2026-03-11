@@ -156,7 +156,8 @@ Respond with ONLY a JSON object (no markdown, no extra text):
 
     def score(self, prompt: str, first_frame: Image.Image,
               video_path: Optional[str] = None,
-              debug_save_path: Optional[str] = None) -> Dict[str, float]:
+              debug_save_path: Optional[str] = None,
+              frames_dir: Optional[str] = None) -> Dict[str, float]:
         if video_path is None:
             raise ValueError("video_path is required for GPTRewardScorer")
 

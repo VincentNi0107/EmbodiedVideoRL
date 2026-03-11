@@ -54,6 +54,7 @@ torchrun --nproc_per_node=${GPU_NUM} --master_port ${MASTER_PORT} \
     --bowl_gap_max 5 \
     --bowl_reappear_max 10 \
     --bowl_reappear_pos_thr 0.15 \
+    --skip_reward_debug_video true \
     --convert_model_dtype \
     --offload_model false \
     --max_train_steps 400 \

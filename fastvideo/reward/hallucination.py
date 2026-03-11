@@ -53,6 +53,7 @@ class HallucinationRewardScorer(RewardScorer):
         self, prompt: str, first_frame: Image.Image,
         video_path: Optional[str] = None,
         debug_save_path: Optional[str] = None,
+        frames_dir: Optional[str] = None,
     ) -> Dict[str, float]:
         if video_path is None:
             raise ValueError("video_path is required for HallucinationRewardScorer")
@@ -61,13 +62,14 @@ class HallucinationRewardScorer(RewardScorer):
 
         video_stem = os.path.splitext(os.path.basename(video_path))[0]
 
-        # Determine output paths for debug artifacts
-        if debug_save_path:
+        # When no debug output requested, skip video rendering entirely
+        skip_render = (debug_save_path is None)
+
+        if not skip_render:
             debug_dir = os.path.dirname(debug_save_path)
+            output_video = os.path.join(debug_dir, f"{video_stem}_hallucination_tmp.mp4")
         else:
-            import tempfile
-            debug_dir = tempfile.mkdtemp(prefix="hall_reward_")
-        output_video = os.path.join(debug_dir, f"{video_stem}_hallucination_tmp.mp4")
+            output_video = None
 
         try:
             summary = process_video(
@@ -83,6 +85,8 @@ class HallucinationRewardScorer(RewardScorer):
                 occlusion_pos_thr=self._occlusion_pos_thr,
                 duplication_spike_max=self._duplication_spike_max,
                 quiet=True,
+                skip_render=skip_render,
+                frames_dir=frames_dir,
             )
         except Exception as exc:
             main_print(f"  [hall reward] process_video failed: {exc}")
@@ -99,11 +103,16 @@ class HallucinationRewardScorer(RewardScorer):
 
         # Rename annotated video to include result tag: CLEAN or HALL
         tag = "CLEAN" if is_clean else "HALL"
-        final_video = os.path.join(debug_dir, f"{video_stem}_{tag}.mp4")
-        try:
-            os.rename(output_video, final_video)
-        except OSError:
-            final_video = output_video  # fallback if rename fails
+        if not skip_render and output_video:
+            final_video = os.path.join(
+                os.path.dirname(output_video), f"{video_stem}_{tag}.mp4",
+            )
+            try:
+                os.rename(output_video, final_video)
+            except OSError:
+                final_video = output_video  # fallback if rename fails
+        else:
+            final_video = None
 
         display_tag = "CLEAN" if is_clean else f"HALL({n_hall}/{total})"
         response_text = f"[{display_tag}] hall_frames={n_hall}/{total}"

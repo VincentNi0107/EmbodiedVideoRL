@@ -23,7 +23,7 @@ class VideoAlignScorer(RewardScorer):
         self._use_norm = use_norm
 
     @torch.no_grad()
-    def score(self, prompt, first_frame, video_path=None):
+    def score(self, prompt, first_frame, video_path=None, frames_dir=None):
         if video_path is None:
             raise ValueError("video_path required for VideoAlign")
         rw = self._inferencer.reward(

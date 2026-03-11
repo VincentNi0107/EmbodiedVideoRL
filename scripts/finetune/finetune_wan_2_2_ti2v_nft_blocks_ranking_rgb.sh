@@ -51,6 +51,7 @@ torchrun --nproc_per_node=${GPU_NUM} --master_port ${MASTER_PORT} \
     --occlusion_gap_max 7 \
     --occlusion_pos_thr 0.15 \
     --duplication_spike_max 1 \
+    --skip_reward_debug_video true \
     --convert_model_dtype \
     --offload_model false \
     --max_train_steps 400 \

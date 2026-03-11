@@ -51,6 +51,7 @@ torchrun --nproc_per_node=${GPU_NUM} --master_port ${MASTER_PORT} \
     --bottle_cx_cutoff 0.26 \
     --bottle_spike_max 3 \
     --bottle_filter_max_gap 5 \
+    --skip_reward_debug_video true \
     --convert_model_dtype \
     --offload_model false \
     --max_train_steps 400 \

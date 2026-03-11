@@ -56,8 +56,11 @@ class BowlStackRewardScorer(RewardScorer):
 
     # -- helpers --------------------------------------------------------
 
-    def _extract_trajectories(self, video_path: str):
+    def _extract_trajectories(self, video_path: str, frames_dir: str = None):
         """Run SAM3 tracking and return per-object trajectories dict.
+
+        If *frames_dir* is provided, use pre-extracted (and optionally
+        pre-cropped) JPEG frames instead of decoding from *video_path*.
 
         Returns:
             objects: {obj_id_str: [{frame, cx, cy, x, y, w, h, prob}, ...]}
@@ -65,23 +68,32 @@ class BowlStackRewardScorer(RewardScorer):
             total_frames: int
             fps: float
             crop_h: int | None
+            jpeg_dir: str — JPEG directory (caller must clean up via
+                shutil.rmtree when done, unless it was passed in as frames_dir)
         """
         import cv2
         from fastvideo.reward.sam3_utils import extract_frames_to_jpeg, track_prompt
-        import shutil
 
-        cap = cv2.VideoCapture(video_path)
-        fps = cap.get(cv2.CAP_PROP_FPS)
-        vid_w = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
-        h_full = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
-        total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
-        cap.release()
+        if frames_dir is not None:
+            # Frames already extracted (and cropped) by caller
+            jpeg_dir = frames_dir
+            jpeg_files = sorted(f for f in os.listdir(jpeg_dir) if f.endswith(".jpg"))
+            total_frames = len(jpeg_files)
+            fps = 16.0  # default; only matters for debug video rendering
+            crop_h = None  # already cropped
+        else:
+            cap = cv2.VideoCapture(video_path)
+            fps = cap.get(cv2.CAP_PROP_FPS)
+            h_full = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+            total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+            cap.release()
 
-        crop_h = None
-        if self._crop_top_ratio < 1.0:
-            crop_h = (int(h_full * self._crop_top_ratio)) // 16 * 16
+            crop_h = None
+            if self._crop_top_ratio < 1.0:
+                crop_h = (int(h_full * self._crop_top_ratio)) // 16 * 16
 
-        jpeg_dir = extract_frames_to_jpeg(video_path, crop_h=crop_h)
+            jpeg_dir = extract_frames_to_jpeg(video_path, crop_h=crop_h)
+
         frame_results = track_prompt(self._predictor, jpeg_dir, self._prompt)
 
         # Build per-object trajectories
@@ -101,8 +113,9 @@ class BowlStackRewardScorer(RewardScorer):
                     "prob": float(fr["probs"][i]),
                 })
 
-        shutil.rmtree(jpeg_dir, ignore_errors=True)
-        return objects, frame_results, total_frames, fps, crop_h
+        # NOTE: jpeg_dir is returned for reuse by _render_debug_video.
+        # Caller is responsible for cleanup (shutil.rmtree).
+        return objects, frame_results, total_frames, fps, crop_h, jpeg_dir
 
     def _analyze(self, objects, total_frames):
         """Apply 5-criteria stacking analysis on trajectory data.
@@ -274,8 +287,12 @@ class BowlStackRewardScorer(RewardScorer):
         }
 
     def _render_debug_video(self, video_path, frame_results, objects, total_frames,
-                            fps, crop_h, output_path):
-        """Render annotated tracking video with bboxes, trails, and convergence info."""
+                            fps, crop_h, output_path, jpeg_dir=None):
+        """Render annotated tracking video with bboxes, trails, and convergence info.
+
+        If *jpeg_dir* is provided, reuse the existing JPEG frames (avoids
+        redundant extraction).  Otherwise extract from *video_path*.
+        """
         import cv2
         from fastvideo.reward.sam3_utils import extract_frames_to_jpeg, save_video_libx264
         import shutil
@@ -287,7 +304,9 @@ class BowlStackRewardScorer(RewardScorer):
 
         check_start = max(0, total_frames - int(total_frames * self._check_window_frac))
 
-        jpeg_dir = extract_frames_to_jpeg(video_path, crop_h=crop_h)
+        own_jpeg = jpeg_dir is None
+        if own_jpeg:
+            jpeg_dir = extract_frames_to_jpeg(video_path, crop_h=crop_h)
         trail_history = {}
         out_frames = []
 
@@ -346,7 +365,8 @@ class BowlStackRewardScorer(RewardScorer):
 
         os.makedirs(os.path.dirname(output_path) or ".", exist_ok=True)
         save_video_libx264(out_frames, output_path, fps)
-        shutil.rmtree(jpeg_dir, ignore_errors=True)
+        if own_jpeg:
+            shutil.rmtree(jpeg_dir, ignore_errors=True)
 
     # -- RewardScorer interface -----------------------------------------
 
@@ -354,17 +374,24 @@ class BowlStackRewardScorer(RewardScorer):
         self, prompt: str, first_frame: Image.Image,
         video_path: Optional[str] = None,
         debug_save_path: Optional[str] = None,
+        frames_dir: Optional[str] = None,
     ) -> Dict[str, float]:
         if video_path is None:
             raise ValueError("video_path is required for BowlStackRewardScorer")
 
+        import shutil
+
+        own_jpeg = frames_dir is None  # True → scorer creates its own jpeg_dir
         video_stem = os.path.splitext(os.path.basename(video_path))[0]
+        jpeg_dir = None
 
         try:
-            objects, frame_results, total_frames, fps, crop_h = \
-                self._extract_trajectories(video_path)
+            objects, frame_results, total_frames, fps, crop_h, jpeg_dir = \
+                self._extract_trajectories(video_path, frames_dir=frames_dir)
             is_clean, fail_reasons, analysis = self._analyze(objects, total_frames)
         except Exception as exc:
+            if jpeg_dir and own_jpeg:
+                shutil.rmtree(jpeg_dir, ignore_errors=True)
             main_print(f"  [bowl stack reward] failed: {exc}")
             return {
                 "reward": 0.0, "pass": False,
@@ -379,7 +406,7 @@ class BowlStackRewardScorer(RewardScorer):
             f"conv_dist={analysis['convergence_max_dist']:.3f} {reasons_str}"
         )
 
-        # Render debug video if requested
+        # Render debug video if requested (reuses jpeg_dir from tracking)
         if debug_save_path:
             debug_dir = os.path.dirname(debug_save_path)
             final_video = os.path.join(debug_dir, f"{video_stem}_{tag}.mp4")
@@ -387,12 +414,17 @@ class BowlStackRewardScorer(RewardScorer):
                 self._render_debug_video(
                     video_path, frame_results, objects,
                     total_frames, fps, crop_h, final_video,
+                    jpeg_dir=jpeg_dir,
                 )
             except Exception as exc:
                 main_print(f"  [bowl stack reward] render failed: {exc}")
                 final_video = None
         else:
             final_video = None
+
+        # Cleanup jpeg_dir only if we created it (not when caller provided frames_dir)
+        if jpeg_dir and own_jpeg:
+            shutil.rmtree(jpeg_dir, ignore_errors=True)
 
         return {
             "reward": reward,
