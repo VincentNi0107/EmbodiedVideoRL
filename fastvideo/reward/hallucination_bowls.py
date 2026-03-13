@@ -389,6 +389,8 @@ class BowlStackRewardScorer(RewardScorer):
             objects, frame_results, total_frames, fps, crop_h, jpeg_dir = \
                 self._extract_trajectories(video_path, frames_dir=frames_dir)
             is_clean, fail_reasons, analysis = self._analyze(objects, total_frames)
+            from fastvideo.reward.sam3_utils import compute_motion_score_from_objects
+            motion_score = compute_motion_score_from_objects(objects)
         except Exception as exc:
             if jpeg_dir and own_jpeg:
                 shutil.rmtree(jpeg_dir, ignore_errors=True)
@@ -432,6 +434,7 @@ class BowlStackRewardScorer(RewardScorer):
             "fail_reasons": fail_reasons,
             "num_real_objects": analysis["num_real_objects"],
             "convergence_max_dist": analysis["convergence_max_dist"],
+            "motion_score": motion_score,
             "annotated_video": final_video,
             "_response_text": response_text,
         }

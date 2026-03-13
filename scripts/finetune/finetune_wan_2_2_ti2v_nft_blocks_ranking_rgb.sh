@@ -16,6 +16,7 @@ NUM_GEN=${NUM_GEN:-16}
 SEED=${SEED:-42}
 TEMPORAL_LAMBDA=${TEMPORAL_LAMBDA:-0.0}
 KL_BETA=${KL_BETA:-0.001}
+NFT_BESTOFN=${NFT_BESTOFN:-0}
 
 # Auto-generate OUTPUT_DIR from hyperparams
 OUTPUT_DIR=${OUTPUT_DIR:-"data/outputs/nft_blocks_ranking_rgb/ng${NUM_GEN}_s${SEED}_tl${TEMPORAL_LAMBDA}_kl${KL_BETA}"}
@@ -43,6 +44,7 @@ torchrun --nproc_per_node=${GPU_NUM} --master_port ${MASTER_PORT} \
     --sample_shift 5.0 \
     --sample_guide_scale 5.0 \
     --num_generations ${NUM_GEN} \
+    --nft_bestofn ${NFT_BESTOFN} \
     --seed ${SEED} \
     --max_samples -1 \
     --reward_backend hallucination \
@@ -51,7 +53,6 @@ torchrun --nproc_per_node=${GPU_NUM} --master_port ${MASTER_PORT} \
     --occlusion_gap_max 7 \
     --occlusion_pos_thr 0.15 \
     --duplication_spike_max 1 \
-    --skip_reward_debug_video true \
     --convert_model_dtype \
     --offload_model false \
     --max_train_steps 400 \
@@ -63,10 +64,11 @@ torchrun --nproc_per_node=${GPU_NUM} --master_port ${MASTER_PORT} \
     --nft_beta 1.0 \
     --kl_beta ${KL_BETA} \
     --adv_clip_max 1.0 \
+    --raw_reward_as_r \
     --timestep_fraction 0.5 \
     --decay_type 1 \
     --temporal_lambda ${TEMPORAL_LAMBDA} \
-    --gradient_accumulation_steps 4 \
+    --gradient_accumulation_steps 10 \
     --checkpointing_steps 10 \
     --lora_rank ${LORA_RANK} \
     --lora_alpha ${LORA_ALPHA} \

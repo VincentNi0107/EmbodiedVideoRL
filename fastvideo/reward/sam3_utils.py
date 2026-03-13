@@ -4,8 +4,11 @@ Provides:
   - extract_frames_to_jpeg: video → JPEG folder (SAM3 input format)
   - track_prompt: run SAM3 text-prompt tracking on a JPEG folder
   - save_video_libx264: BGR frame list → libx264 mp4 (VSCode-compatible)
+  - compute_motion_metrics: per-object trajectory motion metrics
+  - compute_motion_score_from_objects: aggregate motion_score for best-of-N
 """
 
+import math
 import os
 import tempfile
 
@@ -134,3 +137,78 @@ def track_prompt(predictor, video_resource: str, prompt: str):
         session_id=session_id,
     ))
     return frame_results
+
+
+# ── Motion metrics for best-of-N selection ───────────────────────
+
+
+def compute_motion_metrics(traj: list[dict]) -> dict:
+    """Compute motion metrics for a single object trajectory.
+
+    Args:
+        traj: list of dicts, each with at least {frame, cx, cy}.
+
+    Returns:
+        dict with: traj_length, avg_speed, max_speed, max_speed_jump, num_points.
+    """
+    if len(traj) < 2:
+        return {
+            "traj_length": 0.0,
+            "avg_speed": 0.0,
+            "max_speed": 0.0,
+            "max_speed_jump": 0.0,
+            "num_points": len(traj),
+        }
+
+    velocities = []  # (vx, vy) per step
+    speeds = []
+    total_length = 0.0
+    for i in range(1, len(traj)):
+        dx = traj[i]["cx"] - traj[i - 1]["cx"]
+        dy = traj[i]["cy"] - traj[i - 1]["cy"]
+        dist = math.sqrt(dx * dx + dy * dy)
+        frame_gap = max(traj[i]["frame"] - traj[i - 1]["frame"], 1)
+        vx = dx / frame_gap
+        vy = dy / frame_gap
+        velocities.append((vx, vy))
+        speeds.append(dist / frame_gap)
+        total_length += dist
+
+    # Speed jumps as vector difference norm (captures direction changes)
+    speed_jumps = []
+    for i in range(1, len(velocities)):
+        dvx = velocities[i][0] - velocities[i - 1][0]
+        dvy = velocities[i][1] - velocities[i - 1][1]
+        speed_jumps.append(math.sqrt(dvx * dvx + dvy * dvy))
+
+    span = traj[-1]["frame"] - traj[0]["frame"]
+    return {
+        "traj_length": total_length,
+        "avg_speed": total_length / span if span > 0 else 0.0,
+        "max_speed": max(speeds),
+        "max_speed_jump": max(speed_jumps) if speed_jumps else 0.0,
+        "num_points": len(traj),
+    }
+
+
+def compute_motion_score_from_objects(objects: dict) -> float:
+    """Compute aggregate motion_score across all tracked objects.
+
+    Args:
+        objects: {obj_id_str: [{frame, cx, cy, ...}, ...]}
+                 Same format as returned by _extract_trajectories().
+
+    Returns:
+        motion_score = total_traj_length + max_max_speed.
+        Lower is better (less jitter / teleportation).
+        Returns float('inf') if no valid trajectories.
+    """
+    # Filter real objects (first appearance <= frame 5)
+    real = {oid: t for oid, t in objects.items() if t and t[0]["frame"] <= 5}
+    if not real:
+        return float("inf")
+
+    metrics = [compute_motion_metrics(t) for t in real.values()]
+    total_traj_length = sum(m["traj_length"] for m in metrics)
+    max_max_speed = max(m["max_speed"] for m in metrics)
+    return total_traj_length + max_max_speed

@@ -832,6 +832,9 @@ def parse_args():
     # NFT hyper-parameters
     p.add_argument("--num_generations", type=int, default=4,
                     help="N videos per prompt per training step")
+    p.add_argument("--nft_bestofn", type=int, default=0,
+                    help="Among CLEAN videos, keep only the best (lowest motion_score) "
+                         "as positive sample. All FAIL videos kept. 0 = disabled.")
     p.add_argument("--rollout_batch_size", type=int, default=0,
                     help="Max CFG batch size during rollout (0 = auto = 2*N_local). "
                          "Reduce if OOM during rollout phase.")
@@ -841,6 +844,9 @@ def parse_args():
                     help="KL divergence penalty coefficient against reference model")
     p.add_argument("--adv_clip_max", type=float, default=5.0,
                     help="Advantage clipping range (before [0,1] normalisation)")
+    p.add_argument("--raw_reward_as_r", action="store_true", default=False,
+                    help="Use raw rewards directly as r in [0,1] (skip z-score + normalisation). "
+                         "Best for binary rewards where z-score compresses the signal.")
     p.add_argument("--timestep_fraction", type=float, default=0.5,
                     help="Fraction of denoising steps to train on per sample")
     p.add_argument("--decay_type", type=int, default=1, choices=[0, 1, 2],
@@ -1021,6 +1027,7 @@ def main():
     global_optim_step = 0
     reward_history_steps: List[int] = []
     reward_history_means: List[float] = []
+    accum_rewards: List[float] = []  # rewards collected within current accumulation window
 
     # ── resume step counter from checkpoint filename ──────────────
     start_step = 0
@@ -1051,6 +1058,9 @@ def main():
                 main_print(f"  Loaded {len(reward_history_steps)} historical reward entries from training_log.jsonl")
 
     for step in range(start_step + 1, args.max_train_steps + 1):
+        # Save debug videos for first 10 and last 10 steps (one full dataset pass each)
+        save_debug_video = (step <= start_step + 10 or step > args.max_train_steps - 10)
+
         # ─── get next prompt (same on all ranks) ─────────
         try:
             batch = next(data_iter)
@@ -1115,7 +1125,7 @@ def main():
         step_vid_dir = vid_dir / f"step{step:04d}_{scene_suffix}"
         step_reward_dir = reward_dir / f"step{step:04d}_{scene_suffix}"
         step_vid_dir.mkdir(parents=True, exist_ok=True)
-        if not args.skip_reward_debug_video:
+        if save_debug_video:
             step_reward_dir.mkdir(parents=True, exist_ok=True)
 
         # Generate all noise tensors first
@@ -1206,10 +1216,12 @@ def main():
         #  PHASE 1b: REWARD SCORING
         # ════════════════════════════════════════════════════
         local_rws: List[float] = []
+        local_motion_scores: List[float] = []  # for best-of-N selection
+        local_annotated_vids: List[Tuple[float, Optional[str]]] = []  # (reward, video_path)
         for vp, dbg_base, frames_dir in pending_scores:
             if vp is not None:
-                dbg_path = (None if args.skip_reward_debug_video
-                            else str(step_reward_dir / f"{dbg_base}.jpg"))
+                dbg_path = (str(step_reward_dir / f"{dbg_base}.jpg")
+                            if save_debug_video else None)
                 try:
                     rd = scorer.score(
                         prompt=prompt,
@@ -1235,48 +1247,90 @@ def main():
                 annotated_vid = rd.get("annotated_video")
                 if annotated_vid:
                     main_print(f"  [hall reward] {dbg_base}: {resp_text or ''}")
+                # Collect annotated video path for wandb upload
+                local_annotated_vids.append((rw_val, annotated_vid or vp))
             else:
                 rd = {"reward": -10.0, "error": "video_none"}
                 rw_val = float(rd["reward"])
+                local_annotated_vids.append((rw_val, None))
             local_rws.append(rw_val)
+            local_motion_scores.append(float(rd.get("motion_score", float("inf"))))
             # Cleanup pre-extracted JPEG frames (training loop owns this dir)
             if frames_dir is not None:
                 import shutil
                 shutil.rmtree(frames_dir, ignore_errors=True)
 
-        # ─── gather rewards across ranks ──────────────────
+        # ─── gather rewards and motion scores across ranks ─
         if use_ddp:
             local_rw_t = torch.tensor(local_rws, dtype=torch.float32, device=device)
             gathered = [torch.zeros_like(local_rw_t) for _ in range(world_size)]
             dist.all_gather(gathered, local_rw_t)
             all_rws_global = torch.cat(gathered).tolist()
+
+            local_ms_t = torch.tensor(local_motion_scores, dtype=torch.float32, device=device)
+            gathered_ms = [torch.zeros_like(local_ms_t) for _ in range(world_size)]
+            dist.all_gather(gathered_ms, local_ms_t)
+            all_ms_global = torch.cat(gathered_ms).tolist()
         else:
             all_rws_global = local_rws
+            all_ms_global = local_motion_scores
 
         rw_tensor = torch.tensor(all_rws_global, dtype=torch.float32, device=device)
-        advs = compute_advantages(rw_tensor, N)
-        local_advs = advs[rank * N_local:(rank + 1) * N_local] if use_ddp else advs
-
-        # Normalise advantages to [0, 1] for NFT
-        local_r = normalise_advantages_to_01(local_advs, args.adv_clip_max)
-
-        all_r = normalise_advantages_to_01(advs, args.adv_clip_max)
         step_mean_rw = rw_tensor.mean().item()
         main_print(f"  rewards : {[f'{r:.3f}' for r in all_rws_global]}")
         main_print(f"  mean_rw : {step_mean_rw:.4f}")
+
+        if args.raw_reward_as_r:
+            # Use raw rewards directly as r — best for binary (0/1) rewards
+            all_r = rw_tensor.clamp(0.0, 1.0)
+            local_r = all_r[rank * N_local:(rank + 1) * N_local] if use_ddp else all_r
+        else:
+            # Default: z-score → clip → normalise to [0, 1]
+            advs = compute_advantages(rw_tensor, N)
+            local_advs = advs[rank * N_local:(rank + 1) * N_local] if use_ddp else advs
+            local_r = normalise_advantages_to_01(local_advs, args.adv_clip_max)
+            all_r = normalise_advantages_to_01(advs, args.adv_clip_max)
+
         main_print(f"  r (normalised advs) : {[f'{v:.3f}' for v in all_r.cpu().tolist()]}")
+        if any(ms < float("inf") for ms in all_ms_global):
+            main_print(f"  motion_scores : {[f'{m:.4f}' for m in all_ms_global]}")
+
+        # ─── Best-of-N: among positives, keep only the best ──
+        N_local_train = N_local
+        if args.nft_bestofn > 0:
+            pos_idx = [i for i in range(N_local) if local_rws[i] >= 0.5]
+            neg_idx = [i for i in range(N_local) if local_rws[i] < 0.5]
+            if len(pos_idx) > 1:
+                best_pos = min(pos_idx, key=lambda i: local_motion_scores[i])
+                selected = sorted([best_pos] + neg_idx)
+                local_x0_preds = [local_x0_preds[i] for i in selected]
+                local_r = local_r[selected]
+                local_annotated_vids = [local_annotated_vids[i] for i in selected]
+                N_local_train = len(selected)
+                main_print(
+                    f"  bestofn : kept {N_local_train}/{N_local} "
+                    f"(best positive ms={local_motion_scores[best_pos]:.4f}, "
+                    f"{len(neg_idx)} negatives)"
+                )
+            else:
+                main_print(f"  bestofn : {len(pos_idx)} positive(s), no filtering needed")
+            if len(neg_idx) == 0:
+                main_print("  bestofn : no negatives — will skip training")
 
         # ─── Check for uniform rewards (all same → zero contrastive signal) ──
         skip_training = (rw_tensor.max() - rw_tensor.min()).item() < 1e-6
+        if args.nft_bestofn > 0 and len([i for i in range(N_local) if local_rws[i] < 0.5]) == 0:
+            skip_training = True  # no contrastive signal with only positives
         if skip_training:
             main_print(
-                f"  ⚠ Uniform rewards detected (all {rw_tensor[0].item():.1f}) — "
+                f"  ⚠ Uniform rewards / no negatives — "
                 f"skipping training for this step (zero contrastive gradient)."
             )
 
         # ─── Update reward curve ──────────────────────────
         reward_history_steps.append(step)
         reward_history_means.append(step_mean_rw)
+        accum_rewards.append(step_mean_rw)
         if rank == 0:
             try:
                 save_reward_curve(
@@ -1317,7 +1371,7 @@ def main():
             }
 
             with no_sync_ctx():
-                for local_i in range(N_local):
+                for local_i in range(N_local_train):
                     x0_i = local_x0_preds[local_i].to(device)
                     r_i = local_r[local_i].item()
 
@@ -1346,7 +1400,7 @@ def main():
                         )
 
                         # Normalise by (samples × timesteps × grad_accum_steps)
-                        loss = loss / (N_local * train_S * args.gradient_accumulation_steps)
+                        loss = loss / (N_local_train * train_S * args.gradient_accumulation_steps)
 
                         loss.backward()
                         accum_loss += loss.detach().item()
@@ -1377,6 +1431,7 @@ def main():
                 f"  [optim step {global_optim_step}] accum_loss={accum_loss:.6f}  "
                 f"grad_norm={gn_val:.4f}  n_fwd={accum_n_fwd}"
             )
+            accum_mean_reward = sum(accum_rewards) / len(accum_rewards) if accum_rewards else 0.0
             accum_loss = 0.0
             accum_n_fwd = 0
 
@@ -1405,11 +1460,14 @@ def main():
                 "global_optim_step": global_optim_step,
                 "mean_reward": rw_tensor.mean().item(),
                 "rewards": all_rws_global,
+                "motion_scores": all_ms_global,
                 "advantages": advs.cpu().tolist(),
                 "r_normalised": local_r.cpu().tolist(),
                 "prompt": prompt[:120],
                 **{f"avg_{k}": v for k, v in avg_terms.items()},
             }
+            if is_optim_step:
+                entry["accum_mean_reward"] = accum_mean_reward
             with log_path.open("a") as f:
                 f.write(json.dumps(entry, ensure_ascii=False) + "\n")
 
@@ -1421,11 +1479,26 @@ def main():
                     "grad_norm": entry["grad_norm"],
                     "global_optim_step": entry["global_optim_step"],
                 }
+                if is_optim_step:
+                    wb_log["accum_mean_reward"] = accum_mean_reward
                 for k in ("avg_policy_loss", "avg_positive_loss", "avg_negative_loss",
                           "avg_kl_div", "avg_temporal_loss", "avg_total_loss", "avg_old_deviate"):
                     if k in entry:
                         wb_log[k] = entry[k]
+                # Upload all rollout videos for first/last 10 steps
+                if save_debug_video:
+                    vids_with_paths = [(rw, p) for rw, p in local_annotated_vids if p is not None]
+                    for vi, (rw, vp) in enumerate(vids_with_paths):
+                        try:
+                            tag = "PASS" if rw > 0 else "FAIL"
+                            wb_log[f"video/g{vi}_{tag}"] = wandb.Video(vp, fps=16, format="mp4")
+                        except Exception as e:
+                            main_print(f"  [wandb video] upload g{vi} failed: {e}")
                 wandb.log(wb_log, step=step)
+
+        # Reset accumulation reward window after optimizer step
+        if is_optim_step:
+            accum_rewards = []
 
         # ─── checkpoint ──────────────────────────────────
         if step % args.checkpointing_steps == 0:

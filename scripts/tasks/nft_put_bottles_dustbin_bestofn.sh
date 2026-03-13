@@ -3,13 +3,13 @@ export WANDB_PROJECT="EmbodiedVideoRL"
 export WANDB_MODE=online
 
 GPU_NUM=${GPU_NUM:-8}
-MASTER_PORT=${MASTER_PORT:-19013}
+MASTER_PORT=${MASTER_PORT:-19015}
 
 CKPT_DIR="ckpts/Wan2.2-TI2V-5B"
 PT_DIR="ckpts/vidar_ckpt/merged_vidar_lora.pt"
 
-# Full dataset: put_object_cabinet (10 scenes)
-DATASET_JSON="data/rl_train/robotwin_put_object_cabinet.json"
+# Full dataset: put_bottles_dustbin (10 scenes)
+DATASET_JSON="data/rl_train/robotwin_put_bottles_dustbin.json"
 
 # Tunable hyperparameters (override via env vars)
 NUM_GEN=${NUM_GEN:-16}
@@ -17,8 +17,8 @@ SEED=${SEED:-42}
 TEMPORAL_LAMBDA=${TEMPORAL_LAMBDA:-0.0}
 KL_BETA=${KL_BETA:-0.001}
 
-# Auto-generate OUTPUT_DIR from hyperparams
-OUTPUT_DIR=${OUTPUT_DIR:-"data/outputs/nft_put_object_cabinet/ng${NUM_GEN}_s${SEED}_tl${TEMPORAL_LAMBDA}_kl${KL_BETA}"}
+# Ablation: --raw_reward_as_r + --nft_bestofn 1
+OUTPUT_DIR=${OUTPUT_DIR:-"data/outputs/nft_put_bottles_dustbin/bestofn_ng${NUM_GEN}_s${SEED}_tl${TEMPORAL_LAMBDA}_kl${KL_BETA}"}
 
 # LoRA config
 LORA_RANK=64
@@ -39,17 +39,19 @@ torchrun --nproc_per_node=${GPU_NUM} --master_port ${MASTER_PORT} \
     --pt_dir ${PT_DIR} \
     --dataset_json ${DATASET_JSON} \
     --output_dir ${OUTPUT_DIR} \
-    --sample_steps 20 \
+    --sample_steps 50 \
     --sample_shift 5.0 \
     --sample_guide_scale 5.0 \
     --num_generations ${NUM_GEN} \
+    --nft_bestofn 1 \
     --seed ${SEED} \
     --max_samples -1 \
-    --reward_backend gpt \
-    --gpt_model gemini-3-flash-preview \
-    --gpt_api_base ${GPT_API_BASE} \
-    --gpt_api_key ${GPT_API_KEY} \
-    --gpt_temperature 0.0 \
+    --reward_backend hallucination_bottles \
+    --hallucination_crop_top_ratio 0.6667 \
+    --bottle_hall_prompt "bottle" \
+    --bottle_cx_cutoff 0.26 \
+    --bottle_spike_max 3 \
+    --bottle_filter_max_gap 5 \
     --skip_reward_debug_video true \
     --convert_model_dtype \
     --offload_model false \

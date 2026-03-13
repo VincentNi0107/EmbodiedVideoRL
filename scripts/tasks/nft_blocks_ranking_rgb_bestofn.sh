@@ -3,13 +3,13 @@ export WANDB_PROJECT="EmbodiedVideoRL"
 export WANDB_MODE=online
 
 GPU_NUM=${GPU_NUM:-8}
-MASTER_PORT=${MASTER_PORT:-19013}
+MASTER_PORT=${MASTER_PORT:-19012}
 
 CKPT_DIR="ckpts/Wan2.2-TI2V-5B"
 PT_DIR="ckpts/vidar_ckpt/merged_vidar_lora.pt"
 
-# Full dataset: put_object_cabinet (10 scenes)
-DATASET_JSON="data/rl_train/robotwin_put_object_cabinet.json"
+# Full dataset: blocks_ranking_rgb (10 scenes)
+DATASET_JSON="data/rl_train/robotwin_blocks_ranking_rgb.json"
 
 # Tunable hyperparameters (override via env vars)
 NUM_GEN=${NUM_GEN:-16}
@@ -17,8 +17,8 @@ SEED=${SEED:-42}
 TEMPORAL_LAMBDA=${TEMPORAL_LAMBDA:-0.0}
 KL_BETA=${KL_BETA:-0.001}
 
-# Auto-generate OUTPUT_DIR from hyperparams
-OUTPUT_DIR=${OUTPUT_DIR:-"data/outputs/nft_put_object_cabinet/ng${NUM_GEN}_s${SEED}_tl${TEMPORAL_LAMBDA}_kl${KL_BETA}"}
+# Ablation: --raw_reward_as_r + --nft_bestofn 1
+OUTPUT_DIR=${OUTPUT_DIR:-"data/outputs/nft_blocks_ranking_rgb/bestofn_ng${NUM_GEN}_s${SEED}_tl${TEMPORAL_LAMBDA}_kl${KL_BETA}"}
 
 # LoRA config
 LORA_RANK=64
@@ -43,19 +43,22 @@ torchrun --nproc_per_node=${GPU_NUM} --master_port ${MASTER_PORT} \
     --sample_shift 5.0 \
     --sample_guide_scale 5.0 \
     --num_generations ${NUM_GEN} \
+    --nft_bestofn 1 \
     --seed ${SEED} \
     --max_samples -1 \
-    --reward_backend gpt \
-    --gpt_model gemini-3-flash-preview \
-    --gpt_api_base ${GPT_API_BASE} \
-    --gpt_api_key ${GPT_API_KEY} \
-    --gpt_temperature 0.0 \
-    --skip_reward_debug_video true \
+    --reward_backend hallucination \
+    --hallucination_prompts "red block" "green block" "blue block" \
+    --hallucination_crop_top_ratio 0.6667 \
+    --occlusion_gap_max 7 \
+    --occlusion_pos_thr 0.15 \
+    --duplication_spike_max 1 \
     --convert_model_dtype \
     --offload_model false \
     --max_train_steps 400 \
     --learning_rate 1e-5 \
     --weight_decay 0.01 \
+    --gpt_api_base ${GPT_API_BASE} \
+    --gpt_api_key ${GPT_API_KEY} \
     --max_grad_norm 2.0 \
     --nft_beta 1.0 \
     --kl_beta ${KL_BETA} \
@@ -64,7 +67,7 @@ torchrun --nproc_per_node=${GPU_NUM} --master_port ${MASTER_PORT} \
     --timestep_fraction 0.5 \
     --decay_type 1 \
     --temporal_lambda ${TEMPORAL_LAMBDA} \
-    --gradient_accumulation_steps 4 \
+    --gradient_accumulation_steps 10 \
     --checkpointing_steps 10 \
     --lora_rank ${LORA_RANK} \
     --lora_alpha ${LORA_ALPHA} \

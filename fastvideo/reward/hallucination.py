@@ -87,6 +87,7 @@ class HallucinationRewardScorer(RewardScorer):
                 quiet=True,
                 skip_render=skip_render,
                 frames_dir=frames_dir,
+                return_tracking_data=True,
             )
         except Exception as exc:
             main_print(f"  [hall reward] process_video failed: {exc}")
@@ -95,6 +96,26 @@ class HallucinationRewardScorer(RewardScorer):
                 "hall_frames": -1, "total_frames": -1,
                 "_response_text": f"[ERROR] {exc}",
             }
+
+        # Compute motion_score from tracking data (for best-of-N selection)
+        tracking_data = summary.pop("_tracking_data", None)
+        motion_score = float("inf")
+        if tracking_data is not None:
+            from fastvideo.reward.sam3_utils import compute_motion_score_from_objects
+            objects = {}
+            for pr in self._prompts:
+                for fi, fr in enumerate(tracking_data[pr]):
+                    for i, obj_id in enumerate(fr["obj_ids"]):
+                        key = f"{pr}_{obj_id}"
+                        if key not in objects:
+                            objects[key] = []
+                        bx, by, bw, bh = fr["boxes_xywh"][i]
+                        objects[key].append({
+                            "frame": fi,
+                            "cx": float(bx + bw / 2),
+                            "cy": float(by + bh / 2),
+                        })
+            motion_score = compute_motion_score_from_objects(objects)
 
         n_hall = summary["total_hallucination_frames"]
         total = summary["frame_count"]
@@ -122,6 +143,7 @@ class HallucinationRewardScorer(RewardScorer):
             "pass": is_clean,
             "hall_frames": n_hall,
             "total_frames": total,
+            "motion_score": motion_score,
             "annotated_video": final_video,
             "_response_text": response_text,
         }

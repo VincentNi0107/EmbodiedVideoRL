@@ -98,6 +98,11 @@ Uses the flow model's original **deterministic ODE** sampling (no noise injectio
 | `--temporal_lambda 0.0` | 0.0 | Temporal consistency loss weight; 0 = disabled, 0.1 = recommended |
 | `--gradient_accumulation_steps 4` | 4 | Prompts accumulated before optimizer.step(); set to 1 for single-scene |
 | `--num_generations 8` | 8 | Videos per prompt; must be divisible by world_size for multi-GPU |
+| `--raw_reward_as_r` | false | Use raw binary reward (0/1) directly as `r` instead of z-score normalization. Recommended for SAM3 binary rewards. |
+| `--nft_bestofn 0` | 0 | Among CLEAN (reward>=0.5) videos, keep only the best (lowest `motion_score`) as positive sample. All FAIL videos kept. 0 = disabled. Requires `--raw_reward_as_r`. |
+
+**Best-of-N selection (`--nft_bestofn`):**
+When enabled, after reward scoring, positive samples are ranked by `motion_score = total_trajectory_length + max_speed` (computed from SAM3 object tracking). Only the best (lowest score = smoothest trajectory) positive is kept; all negatives are kept. This gives a cleaner contrastive signal than treating all CLEAN videos equally. If no negatives remain after filtering, training is skipped for that step (no contrastive gradient). The `motion_score` is logged to JSONL and wandb for analysis.
 
 ### SFT — Supervised Fine-Tuning (`train_sft_wan_2_2_ti2v.py`)
 
@@ -202,6 +207,8 @@ SAM3-based object tracking: tracks specified objects across all video frames usi
 | `--duplication_spike_max` | 0 | Max frames for duplication spike suppression (0=disabled) |
 
 **Debug output:** `reward_debug/step{NNNN}_{stem}/{video_stem}_CLEAN.mp4` or `_HALL.mp4` (SAM3 annotated video with bounding boxes)
+
+**Motion score:** All three SAM3 reward scorers (hallucination, hallucination_bottles, hallucination_bowls) return a continuous `motion_score` alongside the binary reward. Computed as `total_trajectory_length + max_speed` from SAM3 per-object tracking data (see `sam3_utils.compute_motion_score_from_objects()`). Lower = smoother trajectory. Used by `--nft_bestofn` for best-of-N selection among CLEAN videos.
 
 ### 3. SAM3 Bottle Trajectory Hallucination (`--reward_backend hallucination_bottles`)
 
@@ -612,7 +619,12 @@ scripts/finetune/
   finetune_wan_2_2_ti2v_nft_put_object_cabinet.sh   # NFT + Gemini (4 GPU)
   finetune_wan_2_2_ti2v_nft_blocks_ranking_rgb.sh   # NFT + SAM3 hallucination (1 GPU default)
   finetune_wan_2_2_ti2v_nft_put_bottles_dustbin.sh  # NFT + SAM3 bottle trajectory (1 GPU default)
+  finetune_wan_2_2_ti2v_nft_stack_bowls_three.sh    # NFT + SAM3 bowl stack (1 GPU default)
   finetune_wan_2_2_ti2v_sft.sh                      # SFT with GT videos (1 GPU default)
+
+scripts/tasks/                                        # Ablation experiment scripts (fixed configs)
+  nft_{task}_raw.sh                                   # --raw_reward_as_r ablation (no bestofn)
+  nft_{task}_bestofn.sh                               # --raw_reward_as_r + --nft_bestofn 1
 
 scripts/inference/
   infer_nft.sh                      # CLI inference

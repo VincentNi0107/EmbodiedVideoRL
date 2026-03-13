@@ -91,6 +91,7 @@ def process_video(
     quiet: bool = False,
     skip_render: bool = False,
     frames_dir: str | None = None,
+    return_tracking_data: bool = False,
 ) -> dict:
     """Process a single video. Returns a summary dict.
 
@@ -354,5 +355,8 @@ def process_video(
              f"zero_frames={stats['frames_with_zero']} "
              f"multi_frames={stats['frames_with_multiple']} "
              f"suppressed={stats['frames_suppressed_occlusion']}")
+
+    if return_tracking_data:
+        summary["_tracking_data"] = all_results
 
     return summary

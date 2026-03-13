@@ -16,6 +16,7 @@ NUM_GEN=${NUM_GEN:-16}
 SEED=${SEED:-42}
 TEMPORAL_LAMBDA=${TEMPORAL_LAMBDA:-0.0}
 KL_BETA=${KL_BETA:-0.001}
+NFT_BESTOFN=${NFT_BESTOFN:-0}
 
 # Auto-generate OUTPUT_DIR from hyperparams
 OUTPUT_DIR=${OUTPUT_DIR:-"data/outputs/nft_put_bottles_dustbin/ng${NUM_GEN}_s${SEED}_tl${TEMPORAL_LAMBDA}_kl${KL_BETA}"}
@@ -43,6 +44,7 @@ torchrun --nproc_per_node=${GPU_NUM} --master_port ${MASTER_PORT} \
     --sample_shift 5.0 \
     --sample_guide_scale 5.0 \
     --num_generations ${NUM_GEN} \
+    --nft_bestofn ${NFT_BESTOFN} \
     --seed ${SEED} \
     --max_samples -1 \
     --reward_backend hallucination_bottles \
@@ -61,6 +63,7 @@ torchrun --nproc_per_node=${GPU_NUM} --master_port ${MASTER_PORT} \
     --nft_beta 1.0 \
     --kl_beta ${KL_BETA} \
     --adv_clip_max 1.0 \
+    --raw_reward_as_r \
     --timestep_fraction 0.5 \
     --decay_type 1 \
     --temporal_lambda ${TEMPORAL_LAMBDA} \
