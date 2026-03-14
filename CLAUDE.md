@@ -511,6 +511,74 @@ Server endpoints: `POST /` (vidar-compatible), `POST /generate` (simplified), `G
 
 Key env vars: `CKPT_DIR`, `PT_DIR`, `NFT_LORA_PATH`, `LORA_ALPHA`, `IDM_PATH`, `IDM_CPU`, `SAVE_VIDEO`, `SAVE_VIDEO_DIR`.
 
+## SAPIEN Evaluation (vidar-robotwin)
+
+The `vidar-robotwin/` subdirectory contains a client-server evaluation framework for testing video-based manipulation policies in the SAPIEN physics simulator. It measures manipulation success rates on RoboTwin benchmark tasks.
+
+### Architecture
+
+- **Server** (`fastvideo/server_nft.py`): Runs Wan2.2 TI2V video generation + IDM (Inverse Dynamics Model) to predict future frames and extract robot actions
+- **Client** (`vidar-robotwin/script/eval_policy.py`): Runs SAPIEN simulation, feeds observations to server, executes predicted actions, checks task success
+- Both run in the same `wanx` conda environment on a single GPU node
+
+### Running Evaluation
+
+**All-in-one wrapper (recommended):**
+```bash
+# On a GPU node with 1× A100-80GB:
+cd /path/to/EmbodiedVideoRL
+bash scripts/eval/eval_vidar_put_object_cabinet.sh
+```
+
+This script:
+1. Starts the video generation server on port 25400 (background)
+2. Waits for server readiness
+3. Runs SAPIEN client for 10 episodes of put_object_cabinet
+4. Kills server, reports success rate
+
+**Key environment variables:**
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `PT_DIR` | `ckpts/vidar_ckpt/merged_vidar_lora.pt` | Video generation model weights |
+| `IDM_PATH` | `ckpts/vidar_ckpt/idm.pt` | Inverse dynamics model weights |
+| `NFT_LORA_PATH` | (empty) | Optional NFT LoRA checkpoint |
+| `CUDA_DEV` | `0` | GPU device index |
+| `PORT` | `25400` | Server port |
+| `PREFIX` | `vidar_ckpt_test` | Output subdirectory name |
+
+**Manual server + client (for debugging):**
+```bash
+# Terminal 1 — start server:
+NFT_LORA_PATH="" bash scripts/inference/start_server_nft.sh 25400 0
+
+# Terminal 2 — run client:
+cd vidar-robotwin
+conda run -n wanx bash run_client.sh put_object_cabinet hd_clean test_run 120 20 5.0 25400
+
+# Check results:
+cat vidar-robotwin/eval_result/ar/test_run/put_object_cabinet/_result.txt
+```
+
+### SAPIEN Environment Verification
+
+Test that SAPIEN + curobo work correctly (no server needed):
+```bash
+conda run -n wanx python scripts/eval/test_sapien_env.py
+# Expected: setup_demo: SUCCESS, play_once: SUCCESS
+```
+
+### Environment Setup
+
+See `vidar-robotwin/SETUP.md` for full portable setup instructions. Key steps:
+1. Install SAPIEN/simulation deps into wanx: `sapien==3.0.0b1`, `mplib==0.2.1`, `gymnasium`, `transforms3d`, `uvicorn`, `fastapi`
+2. Install ffmpeg: `conda install -n wanx -c conda-forge ffmpeg`
+3. Apply sapien/mplib patches (encoding fix, collision check fix)
+4. Download assets: `bash vidar-robotwin/script/_download_assets.sh`
+
+### Path Portability (${VIDAR_ROOT})
+
+CuRobo YAML configs (`vidar-robotwin/assets/embodiments/*/curobo*.yml`) use `${VIDAR_ROOT}` placeholders for all absolute paths. These are resolved at runtime by `envs/robot/robot.py::_resolve_curobo_yml()` using the vidar-robotwin root directory (computed from `envs/_GLOBAL_CONFIGS.py::ROOT_PATH`). No hardcoded absolute paths — the configs work on any machine as long as the relative directory structure is preserved.
+
 ## Data Directory
 
 ```
@@ -632,6 +700,22 @@ scripts/inference/
   rollout_videos.py                 # Multi-GPU torchrun rollout for any task
   run_rollout_videos.sh             # Multi-GPU rollout launcher
 
+scripts/eval/
+  eval_vidar_put_object_cabinet.sh  # Full eval pipeline (server + client + results)
+  test_sapien_env.py                # Standalone SAPIEN environment test (no server)
+
+vidar-robotwin/                     # SAPIEN evaluation environment (integrated subdirectory)
+  SETUP.md                          #   Portable environment setup guide
+  CLAUDE.md                         #   Codebase documentation
+  script/eval_policy.py             #   Main evaluation loop (client)
+  run_client.sh                     #   Single-GPU eval launcher
+  policy/AR/ar.py                   #   AR policy: caches observations, calls server
+  envs/*.py                         #   SAPIEN task environments
+  envs/robot/robot.py               #   Robot controller + curobo planner
+  envs/_GLOBAL_CONFIGS.py           #   ROOT_PATH auto-detection
+  task_config/*.yml                 #   Environment configs (hd_clean, etc.)
+  assets/embodiments/*/curobo*.yml  #   CuRobo configs (${VIDAR_ROOT} placeholders)
+
 tools/                              # Standalone analysis, validation & visualization scripts
   detect_hallucination.py           # SAM3 hallucination: constant object count (blocks, standalone CLI)
   detect_hallucination_bottles.py   # SAM3 bottle tracking (monotonic baseline, standalone CLI)
@@ -692,9 +776,11 @@ API keys are **never** hardcoded in source files. They are read from environment
 
 - **Login node:** `quser41` — no GPUs, used for code editing, job submission, and file management
 - **GPU nodes:** Allocated dynamically via SLURM, **not guaranteed** — node names change between allocations
-- **Account:** `p33048`
+- **Accounts:** `p33048` (DanceGRPO), `p33175` (EmbodiedVideoRL)
 - **GPU partition:** `gengpu` — has A100 (4×per node on qgpu200x, 2×per node on qgpu0x0x) and H100 (4×per node on qgpu300x)
-- **Project dir:** `/gpfs/projects/p33048/DanceGRPO` (shared filesystem, accessible from all nodes)
+- **Project dirs:**
+  - `/gpfs/projects/p33048/DanceGRPO` — original DanceGRPO training codebase
+  - `/gpfs/projects/p33175/EmbodiedVideoRL` — EmbodiedVideoRL with integrated vidar-robotwin eval
 
 **Check current allocations:**
 ```bash
@@ -703,32 +789,36 @@ squeue -u $USER
 
 **Request GPU nodes (interactive):**
 ```bash
-# 1× A100 (single GPU tasks: inference, debugging, 1-GPU training)
-srun --account=p33048 --partition=gengpu --gres=gpu:a100:1 \
+# 1× A100 (single GPU tasks: inference, debugging, 1-GPU training, eval)
+srun --account=p33175 --partition=gengpu --gres=gpu:a100:1 \
     --time=48:00:00 --mem=128G --cpus-per-task=20 --pty bash
 
 # 4× A100 (multi-GPU training)
-srun --account=p33048 --partition=gengpu --gres=gpu:a100:4 \
+srun --account=p33175 --partition=gengpu --gres=gpu:a100:4 \
     --time=48:00:00 --mem=256G --cpus-per-task=32 --pty bash
 ```
 
 **Run commands on an allocated GPU node:**
 ```bash
 # First, find which node you have:
-squeue -u $USER   # Look at NODELIST column, e.g. qgpu2002
+squeue -u $USER   # Look at NODELIST column, e.g. qgpu2016
 
 # Then SSH to that node to run GPU tasks:
-ssh <node> "conda run -n wanx --no-capture-output --cwd /gpfs/projects/p33048/DanceGRPO \
+ssh <node> "conda run -n wanx --no-capture-output --cwd /gpfs/projects/p33175/EmbodiedVideoRL \
     <command>"
 
+# Run SAPIEN evaluation:
+ssh <node> "conda run -n wanx --no-capture-output --cwd /gpfs/projects/p33175/EmbodiedVideoRL \
+    bash scripts/eval/eval_vidar_put_object_cabinet.sh"
+
 # Background training example:
-ssh <node> "nohup conda run -n wanx --no-capture-output --cwd /gpfs/projects/p33048/DanceGRPO \
+ssh <node> "nohup conda run -n wanx --no-capture-output --cwd /gpfs/projects/p33175/EmbodiedVideoRL \
     bash scripts/finetune/finetune_wan_2_2_ti2v_nft_blocks_ranking_rgb.sh \
     > data/outputs/nft_blocks_ranking_rgb_train.log 2>&1 &"
 ```
 
-**Important:** All `ssh <node>` commands in this doc and in scripts are examples — replace `qgpu2003` with whatever node `squeue -u $USER` shows as your currently allocated node. If no node is allocated, request one with `srun` first.
+**Important:** All `ssh <node>` commands in this doc and in scripts are examples — replace `qgpu2016` with whatever node `squeue -u $USER` shows as your currently allocated node. If no node is allocated, request one with `srun` first.
 
 **Common `conda run` flags:**
 - `--no-capture-output`: Let stdout/stderr pass through (needed for progress bars and real-time logs)
-- `--cwd /gpfs/projects/p33048/DanceGRPO`: Set working directory (critical — `torchrun` needs to find `fastvideo/` relative to cwd)
+- `--cwd /gpfs/projects/p33175/EmbodiedVideoRL`: Set working directory (critical — `torchrun` needs to find `fastvideo/` relative to cwd)
