@@ -1,0 +1,15 @@
+# Basic experiment configuration (keep unchanged)
+policy_name: AR
+task_name: open_laptop
+task_config: hd_randomized
+ckpt_setting: Null
+seed: 1234
+instruction_type: seen
+num_new_frames: 80
+num_sampling_step: 5
+max_steps: 160
+save_dir: eval_result/ar
+port: 24970
+guide_scale: 5.0
+rollout_bound: 60
+rollout_prefill_num: 33

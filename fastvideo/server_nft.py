@@ -28,9 +28,11 @@ Environment variables:
 
 import base64
 import io
+import json as _json
 import logging
 import os
 import time
+import uuid
 from pathlib import Path
 
 import torch
@@ -70,6 +72,26 @@ class SimpleGenerateRequest(PydanticModel):
     shift: float = 5.0
 
 
+class PlanRequest(PydanticModel):
+    """Generate a video plan for closed-loop IDM execution."""
+    prompt: str
+    imgs: list  # list of base64-encoded images (last one used as first frame)
+    num_new_frames: int = 120
+    seed: int = 42
+    num_sampling_step: int = 20
+    guide_scale: float = 5.0
+    shift: float = 5.0
+    password: str = ""
+    return_video: bool = False
+
+
+class IDMStepRequest(PydanticModel):
+    """Per-step closed-loop IDM inference."""
+    session_id: str
+    frame_index: int
+    observation_b64: str  # base64-encoded JPEG of current SAPIEN observation
+
+
 # ── Globals ───────────────────────────────────────────────────────────────────
 
 api = FastAPI(title="DanceGRPO NFT Inference Server")
@@ -82,6 +104,10 @@ idm = None
 idm_device = None
 processor = None
 mask_processor = None
+gc_idm = None  # Goal-conditioned IDM (GoalConditionedMask)
+
+# Session store: maps session_id -> {"goal_frames": Tensor(T,C,H,W), "created": float}
+_video_store: dict = {}
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
@@ -144,7 +170,7 @@ def init():
     global wan_model, wan_cfg, save_video_fn, SIZE_CONFIGS, MAX_AREA_CONFIGS
     global idm, idm_device, processor, mask_processor
 
-    from infer_nft import load_model
+    from fastvideo.infer_nft import load_model
 
     ckpt_dir = os.getenv("CKPT_DIR", "ckpts/Wan2.2-TI2V-5B")
     pt_dir = os.getenv("PT_DIR", None)
@@ -198,6 +224,30 @@ def init():
         mask_processor = torchvision.transforms.Resize((736, 640))
     else:
         logger.info("IDM not loaded (IDM_PATH not set or file missing)")
+
+    # Optionally load goal-conditioned IDM (for closed-loop endpoint)
+    gc_idm_path = os.getenv("GC_IDM_PATH", "")
+    if gc_idm_path and os.path.isfile(gc_idm_path):
+        from server.idm import IDM as IDMModule
+
+        if idm_device is None:
+            idm_device = torch.device(f"cuda:{device_id}")
+            if _env_bool("IDM_CPU"):
+                idm_device = torch.device("cpu")
+
+        gc_idm = IDMModule(model_name="goal_conditioned_mask", output_dim=14).to(idm_device)
+        gc_loaded = torch.load(gc_idm_path, map_location=idm_device, weights_only=False)
+        gc_idm.load_state_dict(gc_loaded["model_state_dict"])
+        gc_idm.eval()
+        logger.info(f"Goal-conditioned IDM loaded from {gc_idm_path}")
+
+        if processor is None:
+            processor = torchvision.transforms.Compose([
+                torchvision.transforms.Resize((518, 518)),
+                torchvision.transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
+            ])
+    else:
+        logger.info("Goal-conditioned IDM not loaded (GC_IDM_PATH not set or file missing)")
 
     logger.info("Server initialization complete.")
 
@@ -340,3 +390,129 @@ async def generate(request: SimpleGenerateRequest):
         "seed": request.seed,
         "frame_num": request.frame_num,
     }
+
+
+# ── Closed-loop IDM endpoints ───────────────────────────────────────────────
+
+
+def _video_tensor_to_goal_frames(video_tensor: torch.Tensor) -> torch.Tensor:
+    """Convert (C, T, H, W) video tensor to (T, C, H, W) goal frames for IDM.
+
+    Produces the same 8-column grid + normalise transform used by the original
+    open-loop ``idm_pred``, so that the goal-conditioned IDM sees the same
+    visual format.
+    """
+    imgs = video_tensor[None].clamp(-1, 1)
+    frames = torch.stack([
+        torchvision.utils.make_grid(u, nrow=8, normalize=True, value_range=(-1, 1))
+        for u in imgs.unbind(2)
+    ], dim=1).permute(1, 0, 2, 3)  # (T, C, H, W)
+    return frames
+
+
+@api.post("/generate_plan")
+async def generate_plan(request: PlanRequest):
+    """Generate a video plan and cache goal frames for closed-loop IDM.
+
+    Returns a session_id that the client uses in subsequent /idm_step calls.
+    """
+    import hashlib
+    expected_hash = "d43e76d9cad30d53805246aa72cc25b04ce2cbe6c7086b53ac6fb5028c48d307"
+    if hashlib.sha256(request.password.encode("utf-8")).hexdigest() != expected_hash:
+        return {}
+
+    frame_num = 1 + request.num_new_frames
+    logger.info(f"[generate_plan] prompt='{request.prompt[:60]}', seed={request.seed}, "
+                f"frames={frame_num}")
+
+    size_key = os.getenv("SIZE", "640*736")
+    img = _decode_image(request.imgs[-1])
+    img = img.resize(SIZE_CONFIGS[size_key])
+
+    video_tensor = wan_model.generate(
+        input_prompt=request.prompt,
+        img=img,
+        size=SIZE_CONFIGS[size_key],
+        max_area=MAX_AREA_CONFIGS[size_key],
+        frame_num=frame_num,
+        shift=request.shift,
+        sample_solver="unipc",
+        sampling_steps=request.num_sampling_step,
+        guide_scale=request.guide_scale,
+        seed=request.seed,
+        offload_model=True,
+    )
+
+    # Cache goal frames on the IDM device
+    goal_frames = _video_tensor_to_goal_frames(video_tensor)  # (T, C, H, W)
+    goal_frames = goal_frames.to(idm_device)
+
+    session_id = uuid.uuid4().hex[:12]
+    _video_store[session_id] = {
+        "goal_frames": goal_frames,
+        "created": time.time(),
+    }
+    logger.info(f"[generate_plan] session={session_id}, cached {goal_frames.shape[0]} goal frames")
+
+    result = {
+        "session_id": session_id,
+        "frame_count": goal_frames.shape[0],
+    }
+
+    if request.return_video:
+        video_b64 = base64.b64encode(
+            _tensor_to_video_bytes(video_tensor, fps=wan_cfg.sample_fps)
+        ).decode("utf-8")
+        result["video_base64"] = video_b64
+
+    return result
+
+
+@api.post("/idm_step")
+async def idm_step(request: IDMStepRequest):
+    """Per-step goal-conditioned IDM inference.
+
+    Takes the current observation + a goal frame index from a cached session,
+    runs the GoalConditionedIDM, and returns a single 14-DOF action.
+    """
+    if gc_idm is None:
+        raise HTTPException(status_code=503, detail="Goal-conditioned IDM not loaded (set GC_IDM_PATH)")
+
+    session = _video_store.get(request.session_id)
+    if session is None:
+        raise HTTPException(status_code=404, detail=f"Session {request.session_id} not found")
+
+    goal_frames = session["goal_frames"]  # (T, C, H, W)
+    if request.frame_index < 0 or request.frame_index >= goal_frames.shape[0]:
+        raise HTTPException(
+            status_code=400,
+            detail=f"frame_index {request.frame_index} out of range [0, {goal_frames.shape[0]})"
+        )
+
+    # Decode current observation from base64 JPEG
+    obs_pil = _decode_image(request.observation_b64)
+    obs_tensor = torchvision.transforms.functional.to_tensor(obs_pil)  # (3, H, W), [0,1]
+    obs_tensor = obs_tensor.unsqueeze(0).to(idm_device)  # (1, 3, H, W)
+
+    # Get the goal frame for this step
+    goal_tensor = goal_frames[request.frame_index].unsqueeze(0)  # (1, 3, H, W)
+
+    # Preprocess both through the same transform (resize + ImageNet normalise)
+    obs_proc = processor(obs_tensor)
+    goal_proc = processor(goal_tensor)
+
+    with torch.no_grad():
+        actions, _ = gc_idm(obs_proc, goal_proc)  # (1, 14)
+
+    return {
+        "action": actions[0].cpu().tolist(),
+    }
+
+
+@api.post("/cleanup_session")
+async def cleanup_session(session_id: str):
+    """Free a cached video session."""
+    if session_id in _video_store:
+        del _video_store[session_id]
+        return {"status": "ok"}
+    return {"status": "not_found"}

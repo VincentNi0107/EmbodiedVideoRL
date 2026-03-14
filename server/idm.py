@@ -143,6 +143,129 @@ class ResNet(nn.Module):
         return output
 
 
+class GoalConditionedMask(nn.Module):
+    """Dual-encoder IDM: takes (observation, goal_frame) and predicts actions.
+
+    The observation provides current robot state; the goal frame (from a
+    generated video) serves as a visual target.  A shared UNet produces
+    separate attention masks for each input, then two ResNet50 encoders
+    extract features that are concatenated and mapped to the 14-DOF action.
+    """
+
+    def __init__(self, output_dim: int = 14):
+        super().__init__()
+        self.output_dim = output_dim
+
+        # 6-channel input (obs + goal) → 2-channel mask (one per input)
+        self.mask_model = UNet(6, 2)
+
+        # Separate encoders — will be init'd from the same pretrained weights
+        self.obs_encoder = ResNet(output_dim=2048, input_channels=3)
+        self.goal_encoder = ResNet(output_dim=2048, input_channels=3)
+
+        # Replace the per-encoder fc with a shared fusion head
+        # (ResNet.__init__ creates fc mapping 2048→output_dim; we override
+        #  output_dim=2048 so fc is 2048→2048, then replace it with Identity)
+        self.obs_encoder.fc = nn.Identity()
+        self.goal_encoder.fc = nn.Identity()
+
+        self.action_head = nn.Sequential(
+            nn.Linear(2048 * 2, 256),
+            nn.ReLU(inplace=True),
+            nn.Linear(256, output_dim),
+        )
+
+    def forward(self, obs, goal, return_mask=False):
+        """
+        Args:
+            obs:  (B, 3, H, W) — current SAPIEN observation (ImageNet-normalised)
+            goal: (B, 3, H, W) — target video frame      (ImageNet-normalised)
+        Returns:
+            actions: (B, output_dim)
+            masks:   (B, 2, H, W) or None
+        """
+        # --- Stage 1: dual attention masks ---
+        concat = torch.cat([obs, goal], dim=1)            # (B, 6, H, W)
+        raw_masks = self.mask_model(concat)                # (B, 2, H, W)
+        masks = torch.sigmoid(raw_masks)
+        masks_hard = torch.where(masks < 0.5, 0.0, 1.0)
+        # STE: forward uses hard mask, backward uses soft mask
+        masks_ste = (masks_hard - masks).detach() + masks  # (B, 2, H, W)
+
+        obs_masked = obs * masks_ste[:, 0:1]
+        goal_masked = goal * masks_ste[:, 1:2]
+
+        # --- Stage 2: dual feature extraction ---
+        feat_obs = self.obs_encoder(obs_masked)            # (B, 2048)
+        feat_goal = self.goal_encoder(goal_masked)         # (B, 2048)
+
+        # --- Stage 3: fusion + action prediction ---
+        feat = torch.cat([feat_obs, feat_goal], dim=1)     # (B, 4096)
+        actions = self.action_head(feat)                   # (B, output_dim)
+
+        if return_mask:
+            return actions, masks
+        return actions, None
+
+    @classmethod
+    def from_pretrained_mask(cls, mask_state_dict, output_dim: int = 14):
+        """Initialise from an existing single-input Mask checkpoint.
+
+        Both ResNet encoders are initialised from the same pretrained
+        ``resnet_model`` weights.  The UNet is initialised from the
+        pretrained ``mask_model`` weights for the first 3 input channels;
+        the remaining 3 channels (goal) are zero-initialised so the model
+        initially behaves like the single-input IDM.
+        """
+        model = cls(output_dim=output_dim)
+
+        # --- ResNet encoders (both from the same checkpoint) ---
+        resnet_sd = {
+            k.replace("resnet_model.", ""): v
+            for k, v in mask_state_dict.items()
+            if k.startswith("resnet_model.")
+        }
+        # The pretrained fc maps 2048→14; we replaced fc with Identity,
+        # so skip fc weights.
+        resnet_sd_no_fc = {k: v for k, v in resnet_sd.items() if not k.startswith("fc.")}
+        model.obs_encoder.load_state_dict(resnet_sd_no_fc, strict=False)
+        model.goal_encoder.load_state_dict(resnet_sd_no_fc, strict=False)
+
+        # --- UNet (first 3 input channels from checkpoint) ---
+        unet_sd = {
+            k.replace("mask_model.", ""): v
+            for k, v in mask_state_dict.items()
+            if k.startswith("mask_model.")
+        }
+        # Manually handle the first conv (in_conv) which changes from 3→6 channels
+        key_in_conv_w = "in_conv.0.weight"  # shape (mid_ch, 3, 3, 3)
+        if key_in_conv_w in unet_sd:
+            old_w = unet_sd[key_in_conv_w]           # (64, 3, 3, 3)
+            new_w = model.mask_model.in_conv[0].weight  # (64, 6, 3, 3)
+            new_w.data[:, :3] = old_w
+            new_w.data[:, 3:] = 0.0                   # zero-init goal channels
+            del unet_sd[key_in_conv_w]
+        # The output conv changes from 1→2 channels
+        key_out_w = "out.weight"                       # shape (1, base_ch, 1, 1)
+        key_out_b = "out.bias"
+        if key_out_w in unet_sd:
+            old_w = unet_sd[key_out_w]                 # (1, 64, 1, 1)
+            new_w = model.mask_model.out.weight         # (2, 64, 1, 1)
+            new_w.data[0:1] = old_w                    # obs mask ← pretrained
+            new_w.data[1:2] = old_w                    # goal mask ← same init
+            del unet_sd[key_out_w]
+        if key_out_b in unet_sd:
+            old_b = unet_sd[key_out_b]                 # (1,)
+            new_b = model.mask_model.out.bias           # (2,)
+            new_b.data[0:1] = old_b
+            new_b.data[1:2] = old_b
+            del unet_sd[key_out_b]
+        # Load remaining (shared) UNet weights
+        model.mask_model.load_state_dict(unet_sd, strict=False)
+
+        return model
+
+
 class IDM(nn.Module):
 
     def __init__(self, model_name, *args, **kwargs):
@@ -150,6 +273,8 @@ class IDM(nn.Module):
         match model_name:
             case "mask":
                 self.model = Mask(*args, **kwargs)
+            case "goal_conditioned_mask":
+                self.model = GoalConditionedMask(*args, **kwargs)
             case _:
                 raise ValueError(f"Unsupported model name: {model_name}")
         if self.model.output_dim == 14:

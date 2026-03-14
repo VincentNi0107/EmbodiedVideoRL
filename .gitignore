@@ -16,6 +16,14 @@ videoalign_ckpt/
 # External dependencies (clone separately)
 sam3/
 
+# vidar-robotwin: large files are handled by vidar-robotwin/.gitignore
+# To include vidar-robotwin in this repo, first remove vidar-robotwin/.git/:
+#   rm -rf vidar-robotwin/.git
+# Then git will pick up vidar-robotwin/.gitignore which excludes assets/, data/, etc.
+# Additional exclusions for vidar-robotwin (not in its own .gitignore):
+vidar-robotwin/initial_obs/
+vidar-robotwin/*.log
+
 # Training outputs (generated videos, logs, debug artifacts)
 data/outputs/
 
