@@ -1461,7 +1461,7 @@ def main():
                 "mean_reward": rw_tensor.mean().item(),
                 "rewards": all_rws_global,
                 "motion_scores": all_ms_global,
-                "advantages": advs.cpu().tolist(),
+                "advantages": advs.cpu().tolist() if not args.raw_reward_as_r else all_r.cpu().tolist(),
                 "r_normalised": local_r.cpu().tolist(),
                 "prompt": prompt[:120],
                 **{f"avg_{k}": v for k, v in avg_terms.items()},
