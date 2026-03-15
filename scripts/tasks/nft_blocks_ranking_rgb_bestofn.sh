@@ -63,7 +63,7 @@ torchrun --nproc_per_node=${GPU_NUM} --master_port ${MASTER_PORT} \
     --nft_beta 1.0 \
     --kl_beta ${KL_BETA} \
     --adv_clip_max 1.0 \
-    --raw_reward_as_r \
+    # --raw_reward_as_r \
     --timestep_fraction 0.5 \
     --decay_type 1 \
     --temporal_lambda ${TEMPORAL_LAMBDA} \
